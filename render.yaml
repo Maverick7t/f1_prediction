@@ -1,0 +1,34 @@
+# Render.com Deployment Configuration
+# This file enables one-click deployment to Render
+
+services:
+  # Backend API Service
+  - type: web
+    name: f1-prediction-api
+    env: python
+    region: oregon
+    plan: free
+    branch: main
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120 wsgi:app
+    healthCheckPath: /
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: FLASK_DEBUG
+        value: "false"
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATA_PATH
+        value: ./f1_training_dataset_2018_2024.csv
+      - key: MODEL_DIR
+        value: ./models_spencer
+      - key: CACHE_DIR
+        value: ./cache
+      - key: FASTF1_CACHE_DIR
+        value: ./f1_cache
+      - key: LOG_LEVEL
+        value: INFO

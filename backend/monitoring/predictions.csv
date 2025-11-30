@@ -1,0 +1,160 @@
+timestamp,race,predicted,actual,correct,confidence,model_version
+2025-11-25T13:21:43.716698,Singapore Grand Prix,RUS,,,68,v3
+2025-11-25T13:21:45.465375,United States Grand Prix,VER,,,97,v3
+2025-11-25T13:21:47.223299,Mexico City Grand Prix,NOR,,,85,v3
+2025-11-25T13:21:48.987995,São Paulo Grand Prix,NOR,,,85,v3
+2025-11-25T13:21:50.590241,Las Vegas Grand Prix,NOR,,,85,v3
+2025-11-25T13:21:52.430322,São Paulo Grand Prix,NOR,,,85,v3
+2025-11-25T13:21:56.405360,Singapore Grand Prix,RUS,,,68,v3
+2025-11-25T13:21:58.212647,United States Grand Prix,VER,,,97,v3
+2025-11-25T13:22:00.779115,Mexico City Grand Prix,NOR,,,85,v3
+2025-11-25T13:22:03.336904,São Paulo Grand Prix,NOR,,,85,v3
+2025-11-25T13:22:05.446431,Las Vegas Grand Prix,NOR,,,85,v3
+2025-11-25T13:22:06.654856,São Paulo Grand Prix,NOR,,,85,v3
+2025-11-26T11:14:49.598942,Singapore Grand Prix,RUS,,,68,v3
+2025-11-26T11:14:52.877174,United States Grand Prix,VER,,,97,v3
+2025-11-26T11:14:56.437281,Mexico City Grand Prix,NOR,,,85,v3
+2025-11-26T11:15:00.308851,São Paulo Grand Prix,NOR,,,85,v3
+2025-11-26T11:15:08.740966,Las Vegas Grand Prix,NOR,,,85,v3
+2025-11-26T11:15:11.357218,São Paulo Grand Prix,NOR,,,85,v3
+2025-11-26T11:15:13.907634,Singapore Grand Prix,RUS,,,68,v3
+2025-11-26T11:15:16.869754,United States Grand Prix,VER,,,97,v3
+2025-11-26T11:15:20.171282,Mexico City Grand Prix,NOR,,,85,v3
+2025-11-26T11:15:23.044483,São Paulo Grand Prix,NOR,,,85,v3
+2025-11-26T11:15:26.690892,Las Vegas Grand Prix,NOR,,,85,v3
+2025-11-26T11:15:27.923223,São Paulo Grand Prix,NOR,,,85,v3
+2025-11-26T11:21:13.289822,Singapore Grand Prix,RUS,,,68,v3
+2025-11-26T11:21:15.066373,United States Grand Prix,VER,,,97,v3
+2025-11-26T11:21:16.875247,Mexico City Grand Prix,NOR,,,85,v3
+2025-11-26T11:21:18.670060,São Paulo Grand Prix,NOR,,,85,v3
+2025-11-26T11:21:20.344122,Las Vegas Grand Prix,NOR,,,85,v3
+2025-11-26T11:21:22.173715,São Paulo Grand Prix,NOR,,,85,v3
+2025-11-26T11:21:26.198224,Singapore Grand Prix,RUS,,,68,v3
+2025-11-26T11:21:28.057825,United States Grand Prix,VER,,,97,v3
+2025-11-26T11:21:29.960542,Mexico City Grand Prix,NOR,,,85,v3
+2025-11-26T11:21:31.811495,São Paulo Grand Prix,NOR,,,85,v3
+2025-11-26T11:21:33.468458,Las Vegas Grand Prix,NOR,,,85,v3
+2025-11-26T11:21:34.432671,São Paulo Grand Prix,NOR,,,85,v3
+2025-11-26T11:22:28.035499,Singapore Grand Prix,RUS,,,68,v3
+2025-11-26T11:22:29.722696,United States Grand Prix,VER,,,97,v3
+2025-11-26T11:22:31.555911,Mexico City Grand Prix,NOR,,,85,v3
+2025-11-26T11:22:33.320074,São Paulo Grand Prix,NOR,,,85,v3
+2025-11-26T11:22:34.890884,Las Vegas Grand Prix,NOR,,,85,v3
+2025-11-26T11:22:36.618543,São Paulo Grand Prix,NOR,,,85,v3
+2025-11-26T11:22:41.177079,Singapore Grand Prix,RUS,,,68,v3
+2025-11-26T11:22:42.931594,United States Grand Prix,VER,,,97,v3
+2025-11-26T11:22:44.874968,Mexico City Grand Prix,NOR,,,85,v3
+2025-11-26T11:22:46.744956,São Paulo Grand Prix,NOR,,,85,v3
+2025-11-26T11:22:48.504946,Las Vegas Grand Prix,NOR,,,85,v3
+2025-11-26T11:22:49.670035,São Paulo Grand Prix,NOR,,,85,v3
+2025-11-26T11:31:30.725583,Singapore Grand Prix,RUS,,,68,v3
+2025-11-26T11:31:32.662022,United States Grand Prix,VER,,,97,v3
+2025-11-26T11:31:34.612416,Mexico City Grand Prix,NOR,,,85,v3
+2025-11-26T11:31:36.492438,São Paulo Grand Prix,NOR,,,85,v3
+2025-11-26T11:31:38.171221,Las Vegas Grand Prix,NOR,,,85,v3
+2025-11-26T11:31:39.838312,São Paulo Grand Prix,NOR,,,85,v3
+2025-11-26T11:31:44.466040,Singapore Grand Prix,RUS,,,68,v3
+2025-11-26T11:31:46.383248,United States Grand Prix,VER,,,97,v3
+2025-11-26T11:31:48.495647,Mexico City Grand Prix,NOR,,,85,v3
+2025-11-26T11:31:50.443910,São Paulo Grand Prix,NOR,,,85,v3
+2025-11-26T11:31:52.221239,Las Vegas Grand Prix,NOR,,,85,v3
+2025-11-26T11:31:53.183489,São Paulo Grand Prix,NOR,,,85,v3
+2025-11-29T16:43:26.997551,Singapore Grand Prix,RUS,,,68,v3
+2025-11-29T16:43:26.999215,Singapore Grand Prix,RUS,,,68,v3
+2025-11-29T16:43:46.853089,United States Grand Prix,VER,,,97,v3
+2025-11-29T16:43:46.859713,United States Grand Prix,VER,,,97,v3
+2025-11-29T16:44:10.458676,Mexico City Grand Prix,NOR,,,85,v3
+2025-11-29T16:44:10.490058,Mexico City Grand Prix,NOR,,,85,v3
+2025-11-29T16:44:34.156984,São Paulo Grand Prix,NOR,,,85,v3
+2025-11-29T16:44:34.172617,São Paulo Grand Prix,NOR,,,85,v3
+2025-11-29T16:44:56.154105,Las Vegas Grand Prix,NOR,,,85,v3
+2025-11-29T16:44:56.167086,Las Vegas Grand Prix,NOR,,,85,v3
+2025-11-29T16:44:57.182296,São Paulo Grand Prix,NOR,,,85,v3
+2025-11-29T16:44:57.959946,São Paulo Grand Prix,NOR,,,85,v3
+2025-11-29T17:16:43.001857,São Paulo Grand Prix,NOR,,,85,v3
+2025-11-29T19:19:02.990455,Singapore Grand Prix,RUS,,,1,v3
+2025-11-29T19:19:04.804836,United States Grand Prix,VER,,,21,v3
+2025-11-29T19:19:06.843609,Mexico City Grand Prix,VER,,,0,v3
+2025-11-29T19:19:08.717697,São Paulo Grand Prix,NOR,,,0,v3
+2025-11-29T19:19:10.356889,Las Vegas Grand Prix,VER,,,0,v3
+2025-11-29T19:19:12.331633,São Paulo Grand Prix,NOR,,,0,v3
+2025-11-29T19:19:18.214253,Singapore Grand Prix,RUS,,,1,v3
+2025-11-29T19:19:25.856099,United States Grand Prix,VER,,,21,v3
+2025-11-29T19:19:26.982439,Singapore Grand Prix,RUS,,,1,v3
+2025-11-29T19:19:27.216825,Singapore Grand Prix,RUS,,,1,v3
+2025-11-29T19:19:29.355751,Mexico City Grand Prix,VER,,,0,v3
+2025-11-29T19:19:30.864604,United States Grand Prix,VER,,,21,v3
+2025-11-29T19:19:30.993018,United States Grand Prix,VER,,,21,v3
+2025-11-29T19:19:33.444920,São Paulo Grand Prix,NOR,,,0,v3
+2025-11-29T19:19:34.600770,Mexico City Grand Prix,VER,,,0,v3
+2025-11-29T19:19:34.647729,Mexico City Grand Prix,VER,,,0,v3
+2025-11-29T19:19:36.410038,Las Vegas Grand Prix,VER,,,0,v3
+2025-11-29T19:19:37.298242,São Paulo Grand Prix,NOR,,,0,v3
+2025-11-29T19:19:37.339954,São Paulo Grand Prix,NOR,,,0,v3
+2025-11-29T19:19:37.385153,São Paulo Grand Prix,NOR,,,0,v3
+2025-11-29T19:19:39.466165,Las Vegas Grand Prix,VER,,,0,v3
+2025-11-29T19:19:39.489844,Las Vegas Grand Prix,VER,,,0,v3
+2025-11-29T19:19:39.571149,São Paulo Grand Prix,NOR,,,0,v3
+2025-11-29T19:19:39.665944,São Paulo Grand Prix,NOR,,,0,v3
+2025-11-29T19:22:11.025682,Las Vegas Grand Prix,VER,,,21,v3
+2025-11-29T19:23:01.179794,Singapore Grand Prix,RUS,,,1,v3
+2025-11-29T19:23:02.392612,United States Grand Prix,VER,,,21,v3
+2025-11-29T19:23:03.685339,Mexico City Grand Prix,VER,,,0,v3
+2025-11-29T19:23:04.983213,São Paulo Grand Prix,NOR,,,0,v3
+2025-11-29T19:23:06.080105,Las Vegas Grand Prix,VER,,,0,v3
+2025-11-29T19:23:07.839666,São Paulo Grand Prix,NOR,,,0,v3
+2025-11-29T19:23:11.188474,Singapore Grand Prix,RUS,,,1,v3
+2025-11-29T19:23:12.543629,United States Grand Prix,VER,,,21,v3
+2025-11-29T19:23:13.909605,Mexico City Grand Prix,VER,,,0,v3
+2025-11-29T19:23:15.227093,São Paulo Grand Prix,NOR,,,0,v3
+2025-11-29T19:23:16.382872,Las Vegas Grand Prix,VER,,,0,v3
+2025-11-29T19:23:16.474556,São Paulo Grand Prix,NOR,,,0,v3
+2025-11-29T19:30:03.010011,Singapore Grand Prix,RUS,,,1,v3
+2025-11-29T19:30:04.388105,United States Grand Prix,VER,,,21,v3
+2025-11-29T19:30:05.814728,Mexico City Grand Prix,VER,,,0,v3
+2025-11-29T19:30:07.215591,São Paulo Grand Prix,NOR,,,0,v3
+2025-11-29T19:30:08.337371,Las Vegas Grand Prix,VER,,,0,v3
+2025-11-29T19:30:10.435611,São Paulo Grand Prix,NOR,,,0,v3
+2025-11-29T19:30:14.022006,Singapore Grand Prix,RUS,,,1,v3
+2025-11-29T19:30:15.439635,United States Grand Prix,VER,,,21,v3
+2025-11-29T19:30:16.830531,Mexico City Grand Prix,VER,,,0,v3
+2025-11-29T19:30:18.185996,São Paulo Grand Prix,NOR,,,0,v3
+2025-11-29T19:30:19.352056,Las Vegas Grand Prix,VER,,,0,v3
+2025-11-29T19:30:19.457193,São Paulo Grand Prix,NOR,,,0,v3
+2025-11-29T20:27:07.715259,Singapore Grand Prix,RUS,,,1,v3
+2025-11-29T20:27:09.393613,United States Grand Prix,VER,,,21,v3
+2025-11-29T20:27:11.515333,Mexico City Grand Prix,VER,,,0,v3
+2025-11-29T20:27:13.189001,São Paulo Grand Prix,NOR,,,0,v3
+2025-11-29T20:27:15.019681,Las Vegas Grand Prix,VER,,,0,v3
+2025-11-29T20:27:16.573630,São Paulo Grand Prix,NOR,,,0,v3
+2025-11-29T20:27:20.881745,Singapore Grand Prix,RUS,,,1,v3
+2025-11-29T20:27:22.248569,United States Grand Prix,VER,,,21,v3
+2025-11-29T20:27:23.672890,Mexico City Grand Prix,VER,,,0,v3
+2025-11-29T20:27:25.188972,São Paulo Grand Prix,NOR,,,0,v3
+2025-11-29T20:27:26.493604,Las Vegas Grand Prix,VER,,,0,v3
+2025-11-29T20:27:26.597309,São Paulo Grand Prix,NOR,,,0,v3
+2025-11-29T20:28:21.936357,Singapore Grand Prix,RUS,,,1,v3
+2025-11-29T20:28:23.220346,United States Grand Prix,VER,,,21,v3
+2025-11-29T20:28:24.640892,Mexico City Grand Prix,VER,,,0,v3
+2025-11-29T20:28:26.030766,São Paulo Grand Prix,NOR,,,0,v3
+2025-11-29T20:28:27.126111,Las Vegas Grand Prix,VER,,,0,v3
+2025-11-29T20:28:29.067671,São Paulo Grand Prix,NOR,,,0,v3
+2025-11-29T20:28:31.973674,Singapore Grand Prix,RUS,,,1,v3
+2025-11-29T20:28:33.289571,United States Grand Prix,VER,,,21,v3
+2025-11-29T20:28:34.750292,Mexico City Grand Prix,VER,,,0,v3
+2025-11-29T20:28:36.120958,São Paulo Grand Prix,NOR,,,0,v3
+2025-11-29T22:39:24.578528,Singapore Grand Prix,RUS,,,39,v3
+2025-11-29T22:39:26.493053,United States Grand Prix,VER,,,79,v3
+2025-11-29T22:39:28.512905,Mexico City Grand Prix,NOR,,,22,v3
+2025-11-29T22:39:30.582231,São Paulo Grand Prix,NOR,,,22,v3
+2025-11-29T22:39:32.518589,Las Vegas Grand Prix,NOR,,,22,v3
+2025-11-29T22:39:35.226798,São Paulo Grand Prix,NOR,,,22,v3
+2025-11-29T22:39:37.945249,Singapore Grand Prix,RUS,,,39,v3
+2025-11-29T22:39:39.206314,United States Grand Prix,VER,,,79,v3
+2025-11-29T22:39:40.577928,Mexico City Grand Prix,NOR,,,22,v3
+2025-11-29T22:39:42.063687,São Paulo Grand Prix,NOR,,,22,v3
+2025-11-29T22:39:43.229658,Las Vegas Grand Prix,NOR,,,22,v3
+2025-11-29T22:39:43.714198,São Paulo Grand Prix,NOR,,,22,v3
+2025-11-30T11:59:28.247051,United States Grand Prix,VER,,,79,v3
+2025-11-30T11:59:30.217339,Mexico City Grand Prix,NOR,,,22,v3
+2025-11-30T16:04:02.934013,Test Race,VER,,,75,v3

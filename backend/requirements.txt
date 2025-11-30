@@ -1,0 +1,41 @@
+# =============================================================================
+# F1 Prediction API - Python Dependencies
+# =============================================================================
+
+# Web Framework
+flask==3.0.0
+flask-cors==4.0.0
+gunicorn==21.2.0
+waitress==3.0.0
+
+# Data Processing
+pandas==2.2.3
+numpy==1.26.4
+
+# Machine Learning
+scikit-learn==1.5.2
+xgboost==2.1.1
+joblib==1.4.2
+
+# HTTP & APIs
+requests==2.32.3
+
+# MLOps
+mlflow==2.10.2
+
+# Configuration
+python-dotenv==1.0.1
+pyyaml==6.0
+
+# Database
+supabase>=2.3.4
+psycopg2-binary==2.9.9
+
+# Caching
+redis==5.0.1
+
+# Validation
+pandera==0.18.1
+
+# FastF1 (F1 telemetry data)
+fastf1>=3.0.0

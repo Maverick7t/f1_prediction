@@ -1,0 +1,533 @@
+/* Enhanced Circuit Map Card Styles */
+
+.enhanced-circuit-container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 18px;
+    background-color: #1a1a1a;
+    border: 1px solid #3a3a3a;
+    border-radius: 10px;
+}
+
+.circuit-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #3a3a3a;
+}
+
+.header-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #888888;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.icon {
+    font-size: 14px;
+}
+
+.header-info {
+    font-size: 10px;
+    color: #cbd5e1;
+    font-weight: 600;
+}
+
+.error-banner {
+    padding: 12px 16px;
+    background-color: #7f1d1d;
+    border: 1px solid #dc2626;
+    border-radius: 6px;
+    color: #fca5a5;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+
+.error-icon {
+    font-size: 16px;
+}
+
+.circuit-content {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 16px;
+    height: 500px;
+}
+
+@media (max-width: 1200px) {
+    .circuit-content {
+        grid-template-columns: 1fr;
+        height: auto;
+    }
+
+    .telemetry-panel-wrapper {
+        max-height: 400px;
+        overflow-y: auto;
+    }
+}
+
+.circuit-canvas-wrapper {
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #3a3a3a;
+}
+
+.telemetry-panel-wrapper {
+    background-color: #0f0f0f;
+    border: 1px solid #3a3a3a;
+    border-radius: 8px;
+    overflow: auto;
+}
+
+.loading-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    min-height: 300px;
+    color: #888888;
+    font-size: 14px;
+}
+
+.spinner {
+    width: 30px;
+    height: 30px;
+    border: 3px solid #3a3a3a;
+    border-top-color: #00d4ff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.circuit-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background-color: #0f0f0f;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+}
+
+.colormap-selector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+
+.colormap-selector label {
+    color: #cbd5e1;
+    font-weight: 600;
+}
+
+.colormap-selector select {
+    padding: 6px 10px;
+    background-color: #1a1a1a;
+    border: 1px solid #3a3a3a;
+    border-radius: 4px;
+    color: #cbd5e1;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.colormap-selector select:hover {
+    border-color: #00d4ff;
+    box-shadow: 0 0 8px rgba(0, 212, 255, 0.1);
+}
+
+/* Driver Selector Styles */
+.driver-selector-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.selector-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #888888;
+    text-transform: uppercase;
+}
+
+.driver-buttons {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 8px;
+}
+
+.driver-button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background-color: rgba(80, 80, 80, 0.3);
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    color: #cbd5e1;
+    font-size: 11px;
+}
+
+.driver-button:hover {
+    border-color: #00d4ff;
+    background-color: rgba(0, 212, 255, 0.1);
+}
+
+.driver-button.active {
+    box-shadow: 0 0 12px rgba(0, 212, 255, 0.3);
+}
+
+.driver-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    color: #fff;
+    font-size: 11px;
+    flex-shrink: 0;
+}
+
+.driver-btn-info {
+    flex: 1;
+}
+
+.driver-btn-code {
+    font-weight: 700;
+    color: #e2e8f0;
+    font-size: 10px;
+}
+
+.driver-btn-name {
+    font-size: 9px;
+    color: #888888;
+}
+
+.driver-btn-detail {
+    font-size: 8px;
+    color: #666666;
+}
+
+/* Telemetry Panel Styles */
+.telemetry-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    color: #e2e8f0;
+}
+
+.panel-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border-bottom: 1px solid #3a3a3a;
+    flex-shrink: 0;
+}
+
+.driver-badge {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #00d4ff, #0082fa);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    color: #fff;
+    flex-shrink: 0;
+}
+
+.driver-code {
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.driver-info {
+    flex: 1;
+}
+
+.driver-name {
+    font-size: 12px;
+    font-weight: 700;
+    color: #cbd5e1;
+}
+
+.driver-team {
+    font-size: 10px;
+    color: #888888;
+}
+
+.driver-position {
+    font-size: 10px;
+    color: #00d4ff;
+    font-weight: 600;
+    margin-top: 2px;
+}
+
+.tab-navigation {
+    display: flex;
+    border-bottom: 1px solid #3a3a3a;
+    flex-shrink: 0;
+    background-color: #1a1a1a;
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 10px 8px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #888888;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.tab-btn:hover {
+    color: #cbd5e1;
+}
+
+.tab-btn.active {
+    color: #00d4ff;
+    border-bottom-color: #00d4ff;
+}
+
+.tab-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+}
+
+.tab-pane {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.stat-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.stat-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: #888888;
+    text-transform: uppercase;
+}
+
+.stat-value {
+    font-size: 16px;
+    font-weight: bold;
+    color: #00d4ff;
+}
+
+.stat-divider {
+    height: 1px;
+    background-color: #3a3a3a;
+    margin: 4px 0;
+}
+
+/* Sector Grid */
+.sector-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+.sector-item {
+    background-color: rgba(0, 212, 255, 0.1);
+    border: 1px solid rgba(0, 212, 255, 0.2);
+    border-radius: 4px;
+    padding: 8px;
+    text-align: center;
+}
+
+.sector-label {
+    font-size: 8px;
+    font-weight: 700;
+    color: #888888;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+}
+
+.sector-time {
+    font-size: 12px;
+    font-weight: bold;
+    color: #cbd5e1;
+}
+
+/* Speed Stats */
+.speed-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.speed-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(58, 58, 58, 0.5);
+}
+
+.speed-row:last-child {
+    border-bottom: none;
+}
+
+.speed-label {
+    font-size: 10px;
+    color: #888888;
+}
+
+.speed-value {
+    font-size: 11px;
+    font-weight: 700;
+    color: #00d4ff;
+}
+
+/* Acceleration Stats */
+.accel-stats,
+.brake-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.accel-row,
+.brake-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px;
+    background-color: rgba(0, 212, 255, 0.05);
+    border-radius: 3px;
+}
+
+.accel-label,
+.brake-label {
+    font-size: 10px;
+    color: #888888;
+    font-weight: 600;
+}
+
+.accel-value,
+.brake-value {
+    font-size: 11px;
+    font-weight: 700;
+    color: #fbbf24;
+}
+
+/* Channels List */
+.channels-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.channel-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    background-color: rgba(0, 212, 255, 0.05);
+    border-radius: 3px;
+    font-size: 10px;
+    color: #cbd5e1;
+}
+
+.channel-icon {
+    font-size: 10px;
+}
+
+.channel-name {
+    font-weight: 600;
+}
+
+/* Categories */
+.categories {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.category {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    color: #cbd5e1;
+}
+
+.cat-badge {
+    display: inline-block;
+    background-color: rgba(0, 212, 255, 0.2);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 3px;
+    padding: 2px 6px;
+    font-weight: 600;
+    white-space: nowrap;
+    font-size: 8px;
+}
+
+/* Info Text */
+.info-text {
+    font-size: 10px;
+    color: #888888;
+    line-height: 1.4;
+    padding: 8px;
+    background-color: rgba(0, 212, 255, 0.05);
+    border-radius: 4px;
+    border-left: 2px solid #00d4ff;
+}
+
+/* Scrollbar Styling */
+.telemetry-panel-wrapper::-webkit-scrollbar,
+.channels-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.telemetry-panel-wrapper::-webkit-scrollbar-track,
+.channels-list::-webkit-scrollbar-track {
+    background-color: transparent;
+}
+
+.telemetry-panel-wrapper::-webkit-scrollbar-thumb,
+.channels-list::-webkit-scrollbar-thumb {
+    background-color: #3a3a3a;
+    border-radius: 3px;
+}
+
+.telemetry-panel-wrapper::-webkit-scrollbar-thumb:hover,
+.channels-list::-webkit-scrollbar-thumb:hover {
+    background-color: #00d4ff;
+}

@@ -1,0 +1,94 @@
+# =============================================================================
+# F1 Prediction System - Git Ignore
+# =============================================================================
+
+# Environment files (NEVER commit these!)
+.env
+.env.local
+.env.production
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+f1env/
+ENV/
+env/
+.venv/
+
+# Cache directories
+cache/
+f1_cache/
+.cache/
+*.cache
+
+# FastF1 cache
+f1_cache/
+
+# MLflow
+mlruns/
+
+# Logs
+*.log
+logs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node (Frontend)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+dist/
+build/
+.next/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Model files (optional - uncomment if models are large)
+# *.joblib
+# models/
+# models_spencer/
+
+# Monitoring logs
+monitoring/predictions.csv
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
