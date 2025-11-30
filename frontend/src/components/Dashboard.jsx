@@ -143,7 +143,7 @@ export default function Dashboard() {
           fontSize: '13px'
         }}>
           <div style={{ fontWeight: '700', marginBottom: '8px' }}>⚠️ {error}</div>
-          <div style={{ fontSize: '12px', opacity: 0.8 }}>Showing fallback data. Make sure the API server is running on http://localhost:5000</div>
+          <div style={{ fontSize: '12px', opacity: 0.8 }}>Showing fallback data. Make sure the API server is running on {API_BASE_URL}</div>
         </div>
       )}
 
@@ -186,8 +186,8 @@ export default function Dashboard() {
                 maxWidth: '400px',
                 margin: '12px auto 0'
               }}>
-                <li>✓ Backend server is running on http://localhost:5000</li>
-                <li>✓ Required CSV files are in the backend directory</li>
+                <li>✓ Backend server is running on {API_BASE_URL}</li>
+                <li>✓ VITE_API_URL environment variable is set correctly</li>
                 <li>✓ OpenF1 API is accessible</li>
               </ul>
             </div>
