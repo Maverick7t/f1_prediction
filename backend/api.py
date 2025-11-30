@@ -38,6 +38,16 @@ from database_v2 import get_prediction_logger, PredictionLogger
 app = Flask(__name__)
 CORS(app)  # Enable CORS for frontend communication
 
+# Add headers to prevent caching issues
+@app.after_request
+def add_header(response):
+    """Add headers to prevent caching of API responses"""
+    if '/api/' in str(request.path):
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    return response
+
 # Configure logging based on config
 logging.basicConfig(
     level=getattr(logging, config.LOG_LEVEL, logging.INFO),
