@@ -36,17 +36,51 @@ from database_v2 import get_prediction_logger, PredictionLogger
 
 # Initialize Flask app
 app = Flask(__name__)
-CORS(app)  # Enable CORS for frontend communication
 
-# Add headers to prevent caching issues
+# Configure CORS with explicit settings for Vercel frontend
+CORS(app, resources={
+    r"/api/*": {
+        "origins": ["https://fonewinner.vercel.app", "http://localhost:5173", "http://localhost:3000", "*"],
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": False
+    }
+})
+
+# Add headers to prevent caching issues and ensure CORS
 @app.after_request
 def add_header(response):
-    """Add headers to prevent caching of API responses"""
+    """Add headers to prevent caching of API responses and ensure CORS"""
+    # Always add CORS headers
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    
     if '/api/' in str(request.path):
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
         response.headers['Pragma'] = 'no-cache'
         response.headers['Expires'] = '0'
     return response
+
+# Error handlers to ensure CORS headers are sent even on errors
+@app.errorhandler(500)
+def handle_500(e):
+    response = jsonify({"success": False, "error": "Internal server error"})
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    return response, 500
+
+@app.errorhandler(404)
+def handle_404(e):
+    response = jsonify({"success": False, "error": "Not found"})
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    return response, 404
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    logger.error(f"Unhandled exception: {e}")
+    response = jsonify({"success": False, "error": str(e)})
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    return response, 500
 
 # Configure logging based on config
 logging.basicConfig(
