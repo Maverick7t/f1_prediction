@@ -2002,7 +2002,90 @@ def driver_telemetry_data():
         }), 500
 
 
-@app.route('/api/qualifying-circuit-telemetry', methods=['GET'])
+@app.before_request
+def load_cache_on_startup():
+    """
+    Load latest qualifying telemetry into cache on first request
+    This ensures subsequent requests are instant
+    """
+    # Only run once per process
+    if hasattr(load_cache_on_startup, 'done'):
+        return
+    
+    load_cache_on_startup.done = True
+    
+    try:
+        cache = get_file_cache()
+        cache_key = CACHE_KEYS["QUALIFYING_TELEMETRY"]
+        
+        # Check if cache exists and is fresh
+        cached = cache.get(cache_key, ttl_seconds=CACHE_TTL["QUALIFYING_TELEMETRY"])
+        if cached is not None:
+            logger.info("✓ Qualifying telemetry cache is fresh")
+            return
+        
+        logger.info("⏳ Pre-loading qualifying telemetry on startup...")
+        
+        # Load latest session
+        session = get_cached_qualifying_session()
+        if session is None:
+            logger.warning("Could not load qualifying session for pre-cache")
+            return
+        
+        session.load(laps=True, telemetry=True, weather=False)
+        
+        # Get top 6 drivers
+        results = session.results.sort_values('Position')
+        top_6_drivers = results.head(6)['Abbreviation'].tolist()
+        
+        drivers_data = []
+        for driver_code in top_6_drivers[:3]:  # Load only first 3 to be quick
+            try:
+                driver_row = session.results[session.results['Abbreviation'] == driver_code].iloc[0]
+                driver_laps = session.laps.pick_drivers([driver_code])
+                if driver_laps.empty:
+                    continue
+                
+                fastest_lap = driver_laps.pick_fastest()
+                telemetry = fastest_lap.get_telemetry()
+                if telemetry.empty:
+                    continue
+                
+                lap_time = fastest_lap['LapTime'].total_seconds() if pd.notna(fastest_lap['LapTime']) else 0
+                
+                driver_data = {
+                    "code": str(driver_code),
+                    "name": str(driver_row['FullName']),
+                    "team": str(driver_row['TeamName']),
+                    "qualifying_position": int(driver_row['Position']),
+                    "telemetry_stats": {
+                        "lap_time_s": float(round(lap_time, 3)),
+                        "top_speed_kmh": float(round(telemetry['Speed'].max(), 1)),
+                        "avg_speed_kmh": float(round(telemetry['Speed'].mean(), 1)),
+                        "data_points": int(len(telemetry))
+                    }
+                }
+                drivers_data.append(driver_data)
+                logger.info(f"  ✓ Pre-loaded {driver_code}")
+            except Exception as e:
+                logger.warning(f"Could not pre-load {driver_code}: {str(e)[:50]}")
+        
+        if drivers_data:
+            result = {
+                "session_info": {
+                    "year": int(session.event.get('Year', session.event.get('year', 2024))),
+                    "event": session.event.get('EventName', 'Unknown'),
+                    "round": int(session.event.get('RoundNumber', 0))
+                },
+                "drivers": drivers_data
+            }
+            cache.set(cache_key, result)
+            logger.info("✓ Pre-loaded qualifying telemetry to cache")
+    except Exception as e:
+        logger.warning(f"Pre-load failed: {str(e)[:100]}")
+
+
+
 def qualifying_circuit_telemetry():
     """
     Returns comprehensive telemetry data for top 6 qualifying drivers (file-cached)
