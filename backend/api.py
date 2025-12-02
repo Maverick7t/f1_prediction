@@ -34,6 +34,9 @@ from feature_store import get_feature_store, FeatureStore
 # Import Supabase prediction logger for accuracy tracking
 from database_v2 import get_prediction_logger, PredictionLogger
 
+# Import caching layer for expensive queries
+from cache_layer import get_cache, CACHE_KEYS, CACHE_TTL, cache_key_for
+
 # Initialize Flask app
 app = Flask(__name__)
 
@@ -1439,11 +1442,24 @@ def get_latest_race_circuit_data():
 def race_history():
     """
     Get last 5 completed races with:
-    1. Qualifying data from FastF1 API
+    1. Qualifying data from FastF1 API (with Redis caching)
     2. Model predictions based on qualifying
     3. Actual winners (from training data for historical races)
     """
     try:
+        # Check cache first
+        cache = get_cache()
+        cache_key = CACHE_KEYS["RACE_HISTORY"]
+        cached_result = cache.get(cache_key)
+        
+        if cached_result is not None:
+            logger.info("✓ Returning cached race history")
+            return jsonify({
+                "success": True,
+                "data": cached_result,
+                "source": "cache"
+            })
+        
         logger.info("Fetching race history with FastF1 qualifying data...")
         
         # Get last 5 qualifying sessions from FastF1
@@ -1453,7 +1469,8 @@ def race_history():
             logger.warning("No qualifying sessions found from FastF1")
             return jsonify({
                 "success": True,
-                "data": []
+                "data": [],
+                "source": "empty"
             })
         
         races = []
@@ -1527,13 +1544,37 @@ def race_history():
         
         logger.info(f"Race history complete: {len(races)} races with predictions")
         
+        # Cache the result for 30 minutes
+        cache.set(cache_key, races, CACHE_TTL["RACE_HISTORY"])
+        
         return jsonify({
             "success": True,
-            "data": races
+            "data": races,
+            "source": "fastf1"
         })
     
     except Exception as e:
         logger.error(f"Race history error: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # Try to return cached version even on error (graceful degradation)
+        cache = get_cache()
+        cache_key = CACHE_KEYS["RACE_HISTORY"]
+        cached_result = cache.get(cache_key)
+        
+        if cached_result is not None:
+            logger.info("⚠️ Returning stale cached race history due to error")
+            return jsonify({
+                "success": True,
+                "data": cached_result,
+                "source": "stale_cache"
+            })
+        
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
         import traceback
         traceback.print_exc()
         return jsonify({
@@ -1962,12 +2003,21 @@ def driver_telemetry_data():
 @app.route('/api/qualifying-circuit-telemetry', methods=['GET'])
 def qualifying_circuit_telemetry():
     """
-    Returns comprehensive telemetry data for top 6 qualifying drivers
+    Returns comprehensive telemetry data for top 6 qualifying drivers (with Redis caching)
     Query params: year, event (optional, defaults to latest)
     """
     try:
         year = request.args.get('year', type=int)
         event = request.args.get('event', type=str)
+        
+        # Check cache first
+        cache = get_cache()
+        cache_key = cache_key_for(CACHE_KEYS["QUALIFYING_TELEMETRY"], year, event)
+        cached_result = cache.get(cache_key)
+        
+        if cached_result is not None:
+            logger.info(f"✓ Returning cached qualifying telemetry")
+            return jsonify(cached_result), 200
         
         logger.info(f"Loading qualifying telemetry for {year} {event}")
         
@@ -2078,7 +2128,7 @@ def qualifying_circuit_telemetry():
                 "error": "No telemetry data could be extracted for top 6 drivers"
             }), 404
         
-        return jsonify({
+        result = {
             "success": True,
             "session_info": {
                 "year": int(session.event.get('Year', session.event.get('year', 2024))),
@@ -2087,12 +2137,27 @@ def qualifying_circuit_telemetry():
                 "round": int(session.event.get('RoundNumber', 0))
             },
             "drivers": drivers_data
-        }), 200
+        }
+        
+        # Cache the result for 30 minutes
+        cache.set(cache_key, result, CACHE_TTL["QUALIFYING_TELEMETRY"])
+        
+        return jsonify(result), 200
     
     except Exception as e:
         logger.error(f"Error in qualifying_circuit_telemetry: {str(e)[:200]}")
         import traceback
         logger.error(traceback.format_exc())
+        
+        # Try to return cached version even on error (graceful degradation)
+        cache = get_cache()
+        cache_key = cache_key_for(CACHE_KEYS["QUALIFYING_TELEMETRY"], year, event)
+        cached_result = cache.get(cache_key)
+        
+        if cached_result is not None:
+            logger.info("⚠️ Returning stale cached telemetry due to error")
+            return jsonify(cached_result), 200
+        
         return jsonify({
             "success": False,
             "error": str(e)
