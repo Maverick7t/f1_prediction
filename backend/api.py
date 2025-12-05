@@ -119,6 +119,18 @@ ERGAST_BASE = config.ERGAST_BASE_URL
 CONFIDENCE_THRESHOLDS = config.CONFIDENCE_THRESHOLDS
 CONFIDENCE_COLORS = config.CONFIDENCE_COLORS
 
+# F1 Driver Code Mapping (2025 season + fallbacks)
+# Maps driver numbers to 3-letter codes used by FastF1
+DRIVER_CODE_MAP = {
+    '1': 'VER', '4': 'NOR', '16': 'LEC', '55': 'SAI',
+    '63': 'RUS', '81': 'PIA', '30': 'BEA', '14': 'ALO',
+    '6': 'TSU', '10': 'GAG', '27': 'HUL', '18': 'SIR',
+    '31': 'OCO', '87': 'STR', '43': 'BOT', '23': 'ALB',
+    '12': 'HAM', '5': 'VET', '22': 'LAT', '44': 'HAM',  # alt codes
+    # 2024 drivers (fallback)
+    '3': 'RIC', '77': 'BOT', '20': 'MAG', '11': 'PER'
+}
+
 # Configure FastF1 cache
 fastf1.Cache.enable_cache(str(config.FASTF1_CACHE_DIR))
 logger.info(f"FastF1 cache enabled at: {config.FASTF1_CACHE_DIR}")
@@ -186,50 +198,6 @@ except Exception as e:
     logger.error(f"Error loading models: {e}")
     raise
 
-
-def compute_basic_features(df):
-    """Compute engineered features for prediction"""
-    df = df.copy()
-    df["event_date"] = pd.to_datetime(df.get("event_date", pd.NaT), errors="coerce")
-    df = df.sort_values(["driver","race_year","event_date"]).reset_index(drop=True)
-
-    df["finishing_position_num"] = pd.to_numeric(df["finishing_position"], errors="coerce")
-    med = df["finishing_position_num"].median()
-
-    df["RecentFormAvg"] = df.groupby("driver")["finishing_position_num"] \
-                            .transform(lambda x: x.shift(1).rolling(5, min_periods=1).mean()) \
-                            .fillna(med)
-
-    df["CircuitHistoryAvg"] = df.groupby(["driver","circuit"])["finishing_position_num"] \
-                                .transform(lambda x: x.shift(1).expanding(min_periods=1).mean()) \
-                                .fillna(med)
-
-    df["TotalRaces"] = df.groupby("driver").cumcount()
-    max_r = df["TotalRaces"].max() if df["TotalRaces"].notna().any() else 1
-    df["DriverExperienceScore"] = (df["TotalRaces"] / max_r).fillna(0)
-
-    team_season = (
-        df.dropna(subset=["finishing_position_num"])
-          .groupby(["race_year","team"])["finishing_position_num"]
-          .mean()
-          .reset_index()
-          .rename(columns={"finishing_position_num":"team_mean_fin"})
-    )
-
-    df = df.merge(team_season, on=["race_year","team"], how="left")
-
-    if df["team_mean_fin"].notna().any():
-        df["TeamPerfScore"] = df.groupby("race_year")["team_mean_fin"] \
-                                .transform(lambda x: (x.max()-x)/(x.max()-x.min()) if x.max()!=x.min() else 0.5)
-    else:
-        df["TeamPerfScore"] = 0.5
-
-    df["EloRating"] = df.get("EloRating",1500.0)
-    df["EloRating"] = pd.to_numeric(df["EloRating"], errors="coerce").fillna(1500.0)
-
-    df = df.ffill().bfill().fillna(0)
-    return df
-
 # ---------- helper: simple file cache ----------
 def cache_path_for_key(prefix: str, key: str, ext: str):
     """Generate cache path for a given key"""
@@ -283,17 +251,6 @@ def get_recent_qualifying_from_fastf1(year, n=5):
     Fetch last n completed qualifying sessions from FastF1 for a given year
     Returns list of dicts with qualifying data matching training data format
     """
-    # Mapping of driver numbers to 3-letter codes (2025 season)
-    driver_code_map = {
-        '1': 'VER', '4': 'NOR', '16': 'LEC', '55': 'SAI',
-        '63': 'RUS', '81': 'PIA', '30': 'BEA', '14': 'ALO',
-        '6': 'TSU', '10': 'GAG', '27': 'HUL', '18': 'SIR',
-        '31': 'OCO', '87': 'STR', '43': 'BOT', '23': 'ALB',
-        '12': 'HAM', '5': 'VET', '22': 'LAT', '44': 'HAM',  # alt codes
-        # 2024 drivers (fallback)
-        '3': 'RIC', '77': 'BOT', '20': 'MAG', '11': 'PER'
-    }
-    
     try:
         logger.info(f"Fetching {n} recent qualifying sessions from FastF1 for year {year}...")
         
@@ -365,7 +322,7 @@ def get_recent_qualifying_from_fastf1(year, n=5):
                     
                     # Map driver number to 3-letter code
                     driver_num_str = str(int(driver_number)).zfill(2) if pd.notna(driver_number) else 'UNK'
-                    driver_code = driver_code_map.get(driver_num_str.lstrip('0') or '0', driver_num_str)
+                    driver_code = DRIVER_CODE_MAP.get(driver_num_str.lstrip('0') or '0', driver_num_str)
                     
                     # If mapping not found, try to extract from driver name
                     if driver_code == driver_num_str and driver_name:
@@ -415,14 +372,6 @@ def get_race_winner_from_fastf1(year, race_name):
     Try to fetch the actual race winner from FastF1 if race has been completed
     Returns driver code (e.g., 'VER') or None if race not completed
     """
-    driver_code_map = {
-        '1': 'VER', '4': 'NOR', '16': 'LEC', '55': 'SAI',
-        '63': 'RUS', '81': 'PIA', '30': 'BEA', '14': 'ALO',
-        '6': 'TSU', '10': 'GAG', '27': 'HUL', '18': 'SIR',
-        '31': 'OCO', '87': 'STR', '43': 'BOT', '23': 'ALB',
-        '12': 'HAM', '5': 'VET', '22': 'LAT', '44': 'HAM',
-        '3': 'RIC', '77': 'BOT', '20': 'MAG', '11': 'PER'
-    }
     
     try:
         logger.info(f"Fetching race result for {race_name} ({year})...")
@@ -452,7 +401,7 @@ def get_race_winner_from_fastf1(year, race_name):
         
         # Map driver number to code
         driver_num_str = str(int(driver_number)).zfill(2) if pd.notna(driver_number) else 'UNK'
-        driver_code = driver_code_map.get(driver_num_str.lstrip('0') or '0', driver_num_str)
+        driver_code = DRIVER_CODE_MAP.get(driver_num_str.lstrip('0') or '0', driver_num_str)
         
         # If mapping not found, use first 3 letters of last name
         if driver_code == driver_num_str and driver_name:
@@ -2002,90 +1951,7 @@ def driver_telemetry_data():
         }), 500
 
 
-@app.before_request
-def load_cache_on_startup():
-    """
-    Load latest qualifying telemetry into cache on first request
-    This ensures subsequent requests are instant
-    """
-    # Only run once per process
-    if hasattr(load_cache_on_startup, 'done'):
-        return
-    
-    load_cache_on_startup.done = True
-    
-    try:
-        cache = get_file_cache()
-        cache_key = CACHE_KEYS["QUALIFYING_TELEMETRY"]
-        
-        # Check if cache exists and is fresh
-        cached = cache.get(cache_key, ttl_seconds=CACHE_TTL["QUALIFYING_TELEMETRY"])
-        if cached is not None:
-            logger.info("✓ Qualifying telemetry cache is fresh")
-            return
-        
-        logger.info("⏳ Pre-loading qualifying telemetry on startup...")
-        
-        # Load latest session
-        session = get_cached_qualifying_session()
-        if session is None:
-            logger.warning("Could not load qualifying session for pre-cache")
-            return
-        
-        session.load(laps=True, telemetry=True, weather=False)
-        
-        # Get top 6 drivers
-        results = session.results.sort_values('Position')
-        top_6_drivers = results.head(6)['Abbreviation'].tolist()
-        
-        drivers_data = []
-        for driver_code in top_6_drivers[:3]:  # Load only first 3 to be quick
-            try:
-                driver_row = session.results[session.results['Abbreviation'] == driver_code].iloc[0]
-                driver_laps = session.laps.pick_drivers([driver_code])
-                if driver_laps.empty:
-                    continue
-                
-                fastest_lap = driver_laps.pick_fastest()
-                telemetry = fastest_lap.get_telemetry()
-                if telemetry.empty:
-                    continue
-                
-                lap_time = fastest_lap['LapTime'].total_seconds() if pd.notna(fastest_lap['LapTime']) else 0
-                
-                driver_data = {
-                    "code": str(driver_code),
-                    "name": str(driver_row['FullName']),
-                    "team": str(driver_row['TeamName']),
-                    "qualifying_position": int(driver_row['Position']),
-                    "telemetry_stats": {
-                        "lap_time_s": float(round(lap_time, 3)),
-                        "top_speed_kmh": float(round(telemetry['Speed'].max(), 1)),
-                        "avg_speed_kmh": float(round(telemetry['Speed'].mean(), 1)),
-                        "data_points": int(len(telemetry))
-                    }
-                }
-                drivers_data.append(driver_data)
-                logger.info(f"  ✓ Pre-loaded {driver_code}")
-            except Exception as e:
-                logger.warning(f"Could not pre-load {driver_code}: {str(e)[:50]}")
-        
-        if drivers_data:
-            result = {
-                "session_info": {
-                    "year": int(session.event.get('Year', session.event.get('year', 2024))),
-                    "event": session.event.get('EventName', 'Unknown'),
-                    "round": int(session.event.get('RoundNumber', 0))
-                },
-                "drivers": drivers_data
-            }
-            cache.set(cache_key, result)
-            logger.info("✓ Pre-loaded qualifying telemetry to cache")
-    except Exception as e:
-        logger.warning(f"Pre-load failed: {str(e)[:100]}")
-
-
-
+@app.route('/api/qualifying-circuit-telemetry')
 def qualifying_circuit_telemetry():
     """
     Returns comprehensive telemetry data for top 6 qualifying drivers (file-cached)
@@ -2169,11 +2035,11 @@ def qualifying_circuit_telemetry():
                 if 'Brake' in telemetry.columns:
                     brake_events = (telemetry['Brake'] > 0).sum()
                 
-                # Circuit trace data - convert to native Python types
+                # Circuit trace data - convert to native Python types (single copy)
                 circuit_trace = {
-                    "x": [float(v) for v in telemetry['X'].tolist()],
-                    "y": [float(v) for v in telemetry['Y'].tolist()],
-                    "speed": [float(v) for v in telemetry['Speed'].tolist()]
+                    "x": telemetry['X'].astype(float).tolist(),
+                    "y": telemetry['Y'].astype(float).tolist(),
+                    "speed": telemetry['Speed'].astype(float).tolist()
                 }
                 
                 # Available telemetry channels
