@@ -1,6 +1,10 @@
 """
 F1 Prediction API Server
 Flask REST API to serve race predictions to the frontend
+
+VERSION: 2.1.0 (Optimized - Startup preload removed)
+DEPLOYED: 2025-12-05
+FIXES: Worker timeout issue, memory optimization, code cleanup
 """
 
 from flask import Flask, jsonify, request, send_file
