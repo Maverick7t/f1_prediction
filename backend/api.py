@@ -1395,7 +1395,7 @@ def get_latest_race_circuit_data():
 
 
 # ---------- New Ergast + Wikipedia endpoints ----------
-@app.route("/api/race-history", methods=["GET"])
+@app.route("/api/race-history", methods=["GET", "OPTIONS"])
 def race_history():
     """
     Get last 5 completed races with:
@@ -1403,6 +1403,13 @@ def race_history():
     2. Model predictions based on qualifying
     3. Actual winners (from training data for historical races)
     """
+    # Handle CORS preflight
+    if request.method == "OPTIONS":
+        response = jsonify({"status": "ok"})
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return response, 200
     try:
         # Check memory cache first
         cache = get_file_cache()
