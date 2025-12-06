@@ -252,8 +252,8 @@ class QualifyingCache:
                 self.supabase.table('qualifying_cache').upsert({
                     'race_key': race_key,
                     'race_year': race_year,
-                    'data': json.dumps(qualifying_data),
-                    'fetched_at': datetime.now().isoformat(),
+                    'qualifying_data': qualifying_data,  # JSONB stores as-is, no json.dumps needed
+                    'cached_at': datetime.now().isoformat(),
                     'expires_at': expires_at.isoformat()
                 }).execute()
                 logger.debug(f"✓ Cached qualifying for {race_key}")
@@ -275,13 +275,14 @@ class QualifyingCache:
         if self._mode == "supabase":
             try:
                 response = self.supabase.table('qualifying_cache') \
-                    .select('data, expires_at') \
+                    .select('qualifying_data, expires_at') \
                     .eq('race_key', race_key) \
                     .gt('expires_at', datetime.now().isoformat()) \
                     .execute()
                 
                 if response.data:
-                    return json.loads(response.data[0]['data'])
+                    # JSONB comes back as native list/dict, no json.loads needed
+                    return response.data[0]['qualifying_data']
             except Exception as e:
                 logger.error(f"Cache read failed: {e}")
         
