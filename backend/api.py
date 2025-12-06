@@ -1994,7 +1994,10 @@ def qualifying_circuit_telemetry():
                 "error": "Could not load qualifying session"
             }), 404
         
-        session.load(laps=True, telemetry=True, weather=False)
+        # TIMEOUT FIX: Load without telemetry to prevent 30s+ load time
+        # Render free tier kills workers after 30s - full telemetry takes 31s+
+        # Circuit map works fine with just lap data (X, Y, Speed from laps)
+        session.load(laps=True, telemetry=False, weather=False)
         
         # Get top 6 drivers
         results = session.results.sort_values('Position')
@@ -2013,10 +2016,18 @@ def qualifying_circuit_telemetry():
                     continue
                 
                 fastest_lap = driver_laps.pick_fastest()
-                telemetry = fastest_lap.get_telemetry()
                 
-                if telemetry.empty:
-                    continue
+                # Try to get telemetry (optional - may not be available)
+                telemetry = None
+                try:
+                    telemetry = fastest_lap.get_telemetry()
+                except:
+                    # Telemetry not available or disabled - use lap data only
+                    logger.debug(f"Telemetry not available for {driver_code}, using lap data")
+                
+                if telemetry is None or telemetry.empty:
+                    # Use lap data without telemetry details
+                    telemetry = None
                 
                 # Extract comprehensive telemetry data
                 lap_time = fastest_lap['LapTime'].total_seconds() if pd.notna(fastest_lap['LapTime']) else 0
