@@ -1041,18 +1041,20 @@ def get_qualifying():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-def get_next_race_qualifying():
+def get_races_with_predictions_and_history():
     """
-    Fetch qualifying data for the next upcoming race.
-    Strategy:
-    1. Check Supabase cache first (fastest)
-    2. If not cached, try to use latest cached qualifying
-    3. Return race info + qualifying data
+    Get last 5 completed races + next race prediction.
+    For each race, return:
+    1. Race info (name, date, circuit)
+    2. Qualifying data (from FastF1 cache)
+    3. Prediction (model prediction based on qualifying)
+    4. Actual winner (from FastF1 race results or training data)
+    5. Accuracy (was prediction correct?)
     
-    Returns: (race_name, race_year, circuit, qualifying_data, race_key) or (None, None, None, None, None)
+    Returns list of race dicts with full prediction history
     """
     try:
-        logger.info("Getting next race qualifying...")
+        logger.info("Building race history with predictions...")
         
         year = 2025
         schedule = fastf1.get_event_schedule(year)
@@ -1060,131 +1062,305 @@ def get_next_race_qualifying():
         
         today = pd.to_datetime(datetime.now().date())
         
-        # Find next race (future races)
-        future_races = schedule[schedule['EventDate'] > today]
+        # Get last 5 completed races
+        past_races = schedule[schedule['EventDate'] <= today].sort_values('EventDate', ascending=False)
+        last_5_races = past_races.head(5)
         
-        if future_races.empty:
-            logger.warning("No upcoming races found for 2025, checking for completed races...")
-            # Fallback: use latest completed race
-            past_races = schedule[schedule['EventDate'] <= today]
-            if past_races.empty:
-                return None, None, None, None, None
-            next_race = past_races.sort_values('EventDate').iloc[-1]
-        else:
-            # Get the nearest upcoming race
-            next_race = future_races.sort_values('EventDate').iloc[0]
+        races = []
         
-        # Extract race info (handle different column names)
-        race_name = next_race.get('EventName') or next_race.get('Event') or 'Unknown Race'
-        race_year = int(next_race.get('Year') or next_race.get('year') or 2025)
-        race_round = int(next_race.get('RoundNumber') or next_race.get('round') or 1)
-        race_key = f"{race_year}_{race_round}_{race_name.replace(' ', '_')}"
+        # Process each of the last 5 races
+        for idx, event in last_5_races.iterrows():
+            race_name = event.get('EventName') or event.get('Event') or 'Unknown'
+            race_year = int(event.get('Year') or event.get('year') or 2025)
+            race_round = int(event.get('RoundNumber') or event.get('round') or 1)
+            race_date = event.get('EventDate')
+            race_key = f"{race_year}_{race_round}_{race_name.replace(' ', '_')}"
+            
+            logger.info(f"Processing race: {race_name} ({race_date.strftime('%Y-%m-%d')})")
+            
+            # 1. Get qualifying data from cache or FastF1
+            try:
+                cache = get_qualifying_cache(config)
+                cached_qual = cache.get_cached_qualifying(race_key)
+                
+                if cached_qual is None:
+                    # Try to fetch from FastF1 directly
+                    logger.info(f"  Fetching qualifying from FastF1 for {race_name}...")
+                    q_session = fastf1.get_session(race_year, race_round, 'Q')
+                    q_session.load(telemetry=False, laps=True)
+                    
+                    if q_session.results is None or q_session.results.empty:
+                        logger.warning(f"    No qualifying data for {race_name}")
+                        continue
+                    
+                    # Convert to qualifying list format
+                    qual_data = []
+                    for q_idx, driver_result in q_session.results.iterrows():
+                        qual_data.append({
+                            'driver': driver_result.get('Abbreviation', 'UNK'),
+                            'team': driver_result.get('TeamName', 'Unknown'),
+                            'qualifying_position': int(driver_result.get('GridPosition', q_idx + 1))
+                        })
+                else:
+                    # Use cached qualifying
+                    if isinstance(cached_qual, str):
+                        import json
+                        cached_qual = json.loads(cached_qual)
+                    
+                    qual_data = cached_qual
+                    if isinstance(qual_data, dict):
+                        qual_data = [qual_data]
+                    
+                    # Normalize field names: 'code' -> 'driver', 'position' -> 'qualifying_position'
+                    if isinstance(qual_data, list):
+                        for entry in qual_data:
+                            if 'code' in entry and 'driver' not in entry:
+                                entry['driver'] = entry.pop('code')
+                            if 'position' in entry and 'qualifying_position' not in entry:
+                                entry['qualifying_position'] = entry.pop('position')
+                
+                logger.info(f"    ✓ Got qualifying: {len(qual_data) if isinstance(qual_data, list) else 1} drivers")
+                
+            except Exception as e:
+                logger.warning(f"    Could not get qualifying for {race_name}: {e}")
+                continue
+            
+            # 2. Run model prediction
+            prediction_data = {
+                "predicted_winner": "N/A",
+                "predicted_confidence": 0,
+                "top3": []
+            }
+            
+            try:
+                qual_df = pd.DataFrame(qual_data) if isinstance(qual_data, list) else pd.DataFrame([qual_data])
+                predictions = infer_from_qualifying(qual_df, race_key, race_year, race_name, race_name)
+                
+                prediction_data = {
+                    "predicted_winner": predictions["winner_prediction"]["driver"],
+                    "predicted_confidence": predictions["winner_prediction"]["percentage"],
+                    "top3": [d["driver"] for d in predictions["top3_prediction"][:3]]
+                }
+                
+                logger.info(f"    ✓ Prediction: {prediction_data['predicted_winner']} ({prediction_data['predicted_confidence']}%)")
+                
+            except Exception as e:
+                logger.error(f"    Prediction error for {race_name}: {e}")
+            
+            # 3. Get actual winner from race results
+            actual_winner = "TBA"
+            is_correct = False
+            
+            try:
+                # Try to get from FastF1 race results
+                race_session = fastf1.get_session(race_year, race_round, 'R')
+                race_session.load(telemetry=False, laps=True)
+                
+                if race_session.results is not None and not race_session.results.empty:
+                    # Get P1 finisher
+                    winner_row = race_session.results.iloc[0]
+                    actual_winner = winner_row.get('Abbreviation', 'UNK')
+                    
+                    # Check accuracy
+                    if actual_winner:
+                        is_correct = (actual_winner.upper() == str(prediction_data['predicted_winner']).upper())
+                    
+                    logger.info(f"    ✓ Actual winner: {actual_winner} | Correct: {is_correct}")
+                else:
+                    logger.warning(f"    Race not completed or no results yet")
+                    actual_winner = "TBA"
+                    
+            except Exception as e:
+                logger.debug(f"    Could not fetch race results: {e}")
+                actual_winner = "TBA"
+            
+            races.append({
+                "round": race_round,
+                "race": race_name,
+                "circuit": race_name,
+                "date": race_date.strftime('%Y-%m-%d'),
+                "predicted_winner": prediction_data["predicted_winner"],
+                "predicted_top3": prediction_data["top3"],
+                "predicted_confidence": prediction_data["predicted_confidence"],
+                "actual_winner": actual_winner,
+                "is_correct": is_correct,
+                "qualifying_count": len(qual_data) if isinstance(qual_data, list) else 1
+            })
         
-        logger.info(f"Next/Latest race: {race_name} (Round {race_round})")
-        
-        # Try to get cached qualifying first
-        cache = get_qualifying_cache(config)
-        cached_data = cache.get_cached_qualifying(race_key)
-        
-        if cached_data:
-            logger.info(f"✓ Using cached qualifying for {race_name}")
-            return race_name, race_year, race_name, cached_data, race_key
-        
-        # Try to fetch latest cached qualifying (any race)
-        latest_cache = cache.get_latest_cached_qualifying()
-        if latest_cache:
-            logger.info(f"✓ Using latest cached qualifying")
-            return race_name, race_year, race_name, latest_cache, race_key
-        
-        # If qualifying hasn't happened yet, return None
-        # This will trigger placeholder response in the endpoint
-        logger.warning(f"Qualifying not yet cached for {race_name}")
-        return race_name, race_year, race_name, None, race_key
+        logger.info(f"✓ Race history complete: {len(races)} races processed")
+        return races
         
     except Exception as e:
-        logger.error(f"Error getting next race qualifying: {e}")
+        logger.error(f"Error building race history: {e}")
         import traceback
         logger.error(traceback.format_exc())
-        return None, None, None, None, None
+        return []
+
+
+def get_next_race_prediction():
+    """
+    Get prediction for the next upcoming race.
+    Fetches qualifying, runs prediction, returns complete prediction data.
+    
+    Returns dict with:
+    - race_name, race_year, circuit, date
+    - predicted_winner, predicted_confidence, top3
+    - qualifying_data
+    - status (ready/pending)
+    """
+    try:
+        logger.info("Getting next race prediction...")
+        
+        year = 2025
+        schedule = fastf1.get_event_schedule(year)
+        schedule['EventDate'] = pd.to_datetime(schedule['EventDate'])
+        
+        today = pd.to_datetime(datetime.now().date())
+        
+        # Find next race
+        future_races = schedule[schedule['EventDate'] > today].sort_values('EventDate')
+        
+        if future_races.empty:
+            logger.warning("No upcoming races found")
+            return None
+        
+        next_event = future_races.iloc[0]
+        race_name = next_event.get('EventName') or next_event.get('Event') or 'Unknown'
+        race_year = int(next_event.get('Year') or next_event.get('year') or 2025)
+        race_round = int(next_event.get('RoundNumber') or next_event.get('round') or 1)
+        race_date = next_event.get('EventDate')
+        race_key = f"{race_year}_{race_round}_{race_name.replace(' ', '_')}"
+        
+        logger.info(f"Next race: {race_name} ({race_date.strftime('%Y-%m-%d')})")
+        
+        # Get qualifying data (from cache or latest available)
+        qual_data = None
+        
+        try:
+            cache = get_qualifying_cache(config)
+            cached_qual = cache.get_cached_qualifying(race_key)
+            
+            if cached_qual:
+                if isinstance(cached_qual, str):
+                    import json
+                    qual_data = json.loads(cached_qual)
+                else:
+                    qual_data = cached_qual
+                
+                # Normalize field names
+                if isinstance(qual_data, list):
+                    for entry in qual_data:
+                        if 'code' in entry and 'driver' not in entry:
+                            entry['driver'] = entry.pop('code')
+                        if 'position' in entry and 'qualifying_position' not in entry:
+                            entry['qualifying_position'] = entry.pop('position')
+            else:
+                # Use latest cached qualifying from any race
+                latest = cache.get_latest_cached_qualifying()
+                if latest:
+                    if isinstance(latest, str):
+                        import json
+                        qual_data = json.loads(latest)
+                    else:
+                        qual_data = latest
+                    
+                    # Normalize field names
+                    if isinstance(qual_data, list):
+                        for entry in qual_data:
+                            if 'code' in entry and 'driver' not in entry:
+                                entry['driver'] = entry.pop('code')
+                            if 'position' in entry and 'qualifying_position' not in entry:
+                                entry['qualifying_position'] = entry.pop('position')
+                    
+                    logger.info(f"  Using latest cached qualifying (different race)")
+                else:
+                    logger.warning(f"  No qualifying data cached yet")
+                    qual_data = None
+                    
+        except Exception as e:
+            logger.debug(f"Cache lookup failed: {e}")
+            qual_data = None
+        
+        # If we have qualifying, run prediction
+        prediction_data = {
+            "predicted_winner": "TBA",
+            "predicted_confidence": 0,
+            "top3": [],
+            "status": "pending"
+        }
+        
+        if qual_data:
+            try:
+                qual_df = pd.DataFrame(qual_data) if isinstance(qual_data, list) else pd.DataFrame([qual_data])
+                predictions = infer_from_qualifying(qual_df, race_key, race_year, race_name, race_name)
+                
+                prediction_data = {
+                    "predicted_winner": predictions["winner_prediction"]["driver"],
+                    "predicted_confidence": predictions["winner_prediction"]["percentage"],
+                    "top3": [d["driver"] for d in predictions["top3_prediction"][:3]],
+                    "full_predictions": predictions.get("full_predictions", []),
+                    "status": "ready"
+                }
+                
+                logger.info(f"  ✓ Prediction: {prediction_data['predicted_winner']} ({prediction_data['predicted_confidence']}%)")
+                
+            except Exception as e:
+                logger.error(f"  Prediction error: {e}")
+        
+        return {
+            "round": race_round,
+            "race": race_name,
+            "circuit": race_name,
+            "date": race_date.strftime('%Y-%m-%d'),
+            "qualifying_count": len(qual_data) if isinstance(qual_data, list) else (1 if qual_data else 0),
+            "predicted_winner": prediction_data["predicted_winner"],
+            "predicted_confidence": prediction_data["predicted_confidence"],
+            "predicted_top3": prediction_data["top3"],
+            "status": prediction_data["status"]
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting next race prediction: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return None
 
 
 @app.route('/api/predict/sao-paulo', methods=['GET'])
 def predict_sao_paulo():
-    """Dynamic endpoint - predicts for the next upcoming race"""
+    """
+    Current Race Tab Endpoint
+    Returns:
+    1. Last 5 races with predictions, actuals, and accuracy
+    2. Next race prediction (pending or ready)
+    Follows the race history + prediction logic
+    """
     try:
-        # Get next race info and qualifying
-        race_name, race_year, circuit, qualifying_data, race_key = get_next_race_qualifying()
+        logger.info("=== Current Race Tab Request ===")
         
-        # If no next race found, return error
-        if race_name is None:
-            return jsonify({
-                "success": False,
-                "error": "No upcoming races found"
-            }), 404
+        # 1. Get race history with predictions for last 5 races
+        race_history = get_races_with_predictions_and_history()
         
-        # If qualifying data not available yet, use placeholder
-        if qualifying_data is None:
-            logger.warning(f"Qualifying not available for {race_name}, using placeholder")
-            return jsonify({
-                "success": True,
-                "data": {
-                    "winner_prediction": {
-                        "driver": "TBA",
-                        "team": "TBA",
-                        "p_win": 0,
-                        "percentage": 0,
-                        "confidence": "PENDING",
-                        "confidence_color": "#94a3b8"
-                    },
-                    "top3_prediction": [],
-                    "full_predictions": []
-                },
-                "race_info": {
-                    "name": race_name,
-                    "circuit": circuit,
-                    "country": "TBA",
-                    "year": race_year
-                },
-                "message": "Qualifying not yet completed"
-            })
+        # 2. Get next race prediction
+        next_race = get_next_race_prediction()
         
-        # Transform cached data to prediction format
-        if isinstance(qualifying_data, str):
-            import json
-            qualifying_data = json.loads(qualifying_data)
+        # Calculate accuracy stats
+        if race_history:
+            correct_predictions = sum(1 for r in race_history if r.get("is_correct", False))
+            accuracy_pct = int((correct_predictions / len(race_history)) * 100) if race_history else 0
+        else:
+            accuracy_pct = 0
         
-        # Handle different data formats
-        if isinstance(qualifying_data, list) and len(qualifying_data) > 0:
-            # Format: [{"code": "VER", "team": "Red Bull", "position": 1}, ...]
-            qual_list = []
-            for i, driver_entry in enumerate(qualifying_data):
-                entry = {
-                    'driver': driver_entry.get('code') or driver_entry.get('driver', 'UNK'),
-                    'team': driver_entry.get('team', 'Unknown'),
-                    'qualifying_position': driver_entry.get('position') or driver_entry.get('qualifying_position', i+1)
-                }
-                qual_list.append(entry)
-            qualifying_data = qual_list
-        
-        qual_df = pd.DataFrame(qualifying_data)
-        
-        # Run prediction
-        predictions = infer_from_qualifying(
-            qual_df,
-            race_key=race_key,
-            race_year=race_year,
-            event=race_name,
-            circuit=circuit
-        )
+        logger.info(f"Accuracy: {accuracy_pct}% ({correct_predictions}/{len(race_history) if race_history else 0})")
         
         return jsonify({
             "success": True,
-            "data": predictions,
-            "race_info": {
-                "name": race_name,
-                "circuit": circuit,
-                "country": "TBA",
-                "year": race_year
+            "race_history": race_history,
+            "next_race": next_race,
+            "accuracy": {
+                "percentage": accuracy_pct,
+                "correct_predictions": correct_predictions if race_history else 0,
+                "total_races": len(race_history)
             }
         })
     
