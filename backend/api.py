@@ -1828,6 +1828,34 @@ def get_cached_qualifying_session():
 def latest_qualifying_session_data():
     """Returns top 6 drivers from latest qualifying session with metadata"""
     try:
+        # Production: serve from cache only (prevent timeout)
+        if config.FLASK_ENV == "production":
+            cache = get_file_cache()
+            cache_key = CACHE_KEYS["QUALIFYING_TELEMETRY"]
+            cached_result = cache.get(cache_key, ttl_seconds=CACHE_TTL["QUALIFYING_TELEMETRY"])
+            
+            if cached_result is not None:
+                logger.info("✓ Returning cached latest qualifying session")
+                # Extract top 6 from cached drivers
+                drivers = cached_result.get("drivers", [])
+                return jsonify({
+                    "success": True,
+                    "session_info": cached_result.get("session_info", {}),
+                    "top_6_drivers": drivers[:6],
+                    "source": "file_cache"
+                }), 200
+            
+            # Cache miss in production
+            logger.warning("⚠️  No cached latest qualifying session in production")
+            return jsonify({
+                "success": False,
+                "error": "Qualifying data not yet cached",
+                "message": "Run: python scripts/cache_qualifying.py",
+                "source": "cache_miss"
+            }), 404
+        
+        # Development: allow fresh load (no timeout risk locally)
+        logger.info("Development mode: loading fresh qualifying session")
         session = get_cached_qualifying_session()
         if session is None:
             return jsonify({
@@ -1876,6 +1904,42 @@ def driver_telemetry_data():
                 "error": "driver_code required"
             }), 400
         
+        # Production: serve from cache only (prevent timeout)
+        if config.FLASK_ENV == "production":
+            cache = get_file_cache()
+            cache_key = CACHE_KEYS["QUALIFYING_TELEMETRY"]
+            cached_result = cache.get(cache_key, ttl_seconds=CACHE_TTL["QUALIFYING_TELEMETRY"])
+            
+            if cached_result is not None:
+                logger.info(f"✓ Returning cached telemetry for {driver_code}")
+                # Find driver in cached data
+                drivers = cached_result.get("drivers", [])
+                driver_data = next((d for d in drivers if d.get("code") == driver_code), None)
+                
+                if driver_data:
+                    return jsonify({
+                        "success": True,
+                        "driver_data": driver_data,
+                        "source": "file_cache"
+                    }), 200
+                else:
+                    return jsonify({
+                        "success": False,
+                        "error": f"Driver {driver_code} not in cached qualifying data",
+                        "message": "Driver may not have qualified"
+                    }), 404
+            
+            # Cache miss in production
+            logger.warning(f"⚠️  No cached qualifying telemetry for {driver_code} in production")
+            return jsonify({
+                "success": False,
+                "error": "Qualifying data not yet cached",
+                "message": "Run: python scripts/cache_qualifying.py",
+                "source": "cache_miss"
+            }), 404
+        
+        # Development: allow fresh load (no timeout risk locally)
+        logger.info(f"Development mode: loading fresh qualifying for {driver_code}")
         session = get_cached_qualifying_session()
         if session is None:
             return jsonify({
