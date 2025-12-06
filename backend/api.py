@@ -1454,9 +1454,19 @@ def race_history():
             race_year = 2025
             race_date = "2025-12-06"
             
-            # If qualifying_data is a list of drivers with telemetry
+            logger.info(f"Cached qualifying type: {type(qualifying_data)}, is list: {isinstance(qualifying_data, list)}")
             if isinstance(qualifying_data, list) and len(qualifying_data) > 0:
                 logger.info(f"Using cached qualifying with {len(qualifying_data)} drivers")
+                logger.info(f"First driver keys: {list(qualifying_data[0].keys())}")
+                
+                # Extract driver code from different possible field names
+                for driver_entry in qualifying_data:
+                    # Map field names
+                    if 'code' in driver_entry and 'name' not in driver_entry:
+                        # Rename to match model expectations
+                        driver_entry['driver'] = driver_entry.pop('code')
+                    if 'name' in driver_entry and 'team' not in driver_entry:
+                        driver_entry['team'] = driver_entry.get('team', 'Unknown')
                 
                 # Try to get actual winner from FastF1 (but with timeout fallback)
                 actual_winner = "TBA"
@@ -1481,7 +1491,17 @@ def race_history():
                         qual_df = pd.DataFrame([
                             {
                                 'driver': d.get('driver'),
-                                'team': d.get('team'),
+                                'team': d.get('team', 'Unknown'),
+                                'qualifying_position': d.get('qualifying_position', i+1)
+                            }
+                            for i, d in enumerate(qualifying_data)
+                        ])
+                    elif 'code' in qualifying_data[0]:
+                        # New format from cached telemetry
+                        qual_df = pd.DataFrame([
+                            {
+                                'driver': d.get('code'),
+                                'team': d.get('team', 'Unknown'),
                                 'qualifying_position': d.get('qualifying_position', i+1)
                             }
                             for i, d in enumerate(qualifying_data)
@@ -1490,6 +1510,7 @@ def race_history():
                         # Format: [{"driver": "VER", "team": "...", "qualifying_position": 1}, ...]
                         qual_df = pd.DataFrame(qualifying_data)
                     
+                    logger.info(f"qual_df shape: {qual_df.shape}, columns: {list(qual_df.columns)}")
                     race_key = f"{race_year}_Latest"
                     
                     # Run model prediction
