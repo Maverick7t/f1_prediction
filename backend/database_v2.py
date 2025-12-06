@@ -296,6 +296,33 @@ class QualifyingCache:
         
         return None
     
+    def get_latest_cached_qualifying(self) -> Optional[list]:
+        """Get the LATEST cached qualifying results (most recent by cached_at)"""
+        if self._mode == "supabase":
+            try:
+                response = self.supabase.table('qualifying_cache') \
+                    .select('qualifying_data, expires_at, race_key') \
+                    .gt('expires_at', datetime.now().isoformat()) \
+                    .order('cached_at', desc=True) \
+                    .limit(1) \
+                    .execute()
+                
+                if response.data:
+                    logger.info(f"✓ Found latest cached qualifying: {response.data[0].get('race_key')}")
+                    return response.data[0]['qualifying_data']
+            except Exception as e:
+                logger.error(f"Cache read failed: {e}")
+        
+        # Check local cache for most recent entry
+        if self._local_cache:
+            latest_key = max(self._local_cache.keys(), 
+                           key=lambda k: self._local_cache[k]['expires_at'])
+            cached = self._local_cache[latest_key]
+            if cached['expires_at'] > datetime.now():
+                return cached['data']
+        
+        return None
+    
     def clear_expired(self):
         """Clean up expired cache entries"""
         if self._mode == "supabase":

@@ -1834,9 +1834,8 @@ def latest_qualifying_session_data():
                 logger.info("✓ Checking Supabase for cached qualifying data...")
                 qualifying_cache = get_qualifying_cache(config)
                 
-                # Get all cached qualifying data, find the most recent
-                # For now, try to get data by searching for 2025 races
-                cached_data = qualifying_cache.get_cached_qualifying("2025")
+                # Get the latest cached qualifying data
+                cached_data = qualifying_cache.get_latest_cached_qualifying()
                 
                 if cached_data:
                     logger.info("✓ Found cached qualifying data in Supabase")
@@ -1912,7 +1911,7 @@ def driver_telemetry_data():
             try:
                 logger.info(f"✓ Checking Supabase for cached telemetry for {driver_code}...")
                 qualifying_cache = get_qualifying_cache(config)
-                cached_data = qualifying_cache.get_cached_qualifying("2025")
+                cached_data = qualifying_cache.get_latest_cached_qualifying()
                 
                 if cached_data and isinstance(cached_data, list):
                     # Find driver in cached data
@@ -2040,7 +2039,7 @@ def qualifying_circuit_telemetry():
             try:
                 logger.info("✓ Checking Supabase for cached qualifying telemetry")
                 qualifying_cache = get_qualifying_cache(config)
-                cached_result = qualifying_cache.get_cached_qualifying("2025")
+                cached_result = qualifying_cache.get_latest_cached_qualifying()
                 
                 if cached_result is not None:
                     logger.info("✓ Returning cached qualifying telemetry from Supabase")
@@ -2069,7 +2068,7 @@ def qualifying_circuit_telemetry():
                 logger.info(f"Production mode: checking cache for {year} {event}")
                 try:
                     qualifying_cache = get_qualifying_cache(config)
-                    cached = qualifying_cache.get_cached_qualifying(f"{year}")
+                    cached = qualifying_cache.get_latest_cached_qualifying()
                     if cached:
                         logger.info(f"✓ Found cached session for {event}")
                         return jsonify({
