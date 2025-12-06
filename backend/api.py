@@ -42,6 +42,9 @@ from database_v2 import get_prediction_logger, PredictionLogger, get_qualifying_
 # Import file-based caching for expensive queries
 from file_cache import get_file_cache, CACHE_KEYS, CACHE_TTL
 
+# Import background scheduler for auto-caching qualifying data
+from scheduler import start_scheduler, stop_scheduler
+
 # Initialize Flask app
 app = Flask(__name__)
 
@@ -2435,10 +2438,19 @@ def mlflow_status():
 # APPLICATION ENTRY POINT
 # =============================================================================
 if __name__ == '__main__':
-    # Run with Flask development server (for local development only)
-    # In production, use: gunicorn -w 4 -b 0.0.0.0:5000 api:app
-    app.run(
-        debug=config.DEBUG,
-        host=config.HOST,
-        port=config.PORT
-    )
+    # Start background scheduler for auto-caching qualifying data
+    logger.info("Starting background scheduler for automatic qualifying cache...")
+    start_scheduler()
+    
+    try:
+        # Run with Flask development server (for local development only)
+        # In production, use: gunicorn -w 4 -b 0.0.0.0:5000 api:app
+        app.run(
+            debug=config.DEBUG,
+            host=config.HOST,
+            port=config.PORT
+        )
+    except KeyboardInterrupt:
+        logger.info("Shutting down...")
+        stop_scheduler()
+

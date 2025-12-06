@@ -34,6 +34,9 @@ psycopg2-binary==2.9.9
 # Caching
 redis==5.0.1
 
+# Task Scheduling
+apscheduler==3.10.4
+
 # Validation
 pandera==0.18.1
 
