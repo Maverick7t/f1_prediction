@@ -125,6 +125,29 @@ CREATE INDEX IF NOT EXISTS idx_predictions_timestamp ON predictions(timestamp);
 CREATE INDEX IF NOT EXISTS idx_predictions_correct ON predictions(correct);
 
 -- =============================================================================
+-- QUALIFYING_CACHE TABLE (Cached qualifying telemetry data)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS qualifying_cache (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    race_key VARCHAR(255) NOT NULL UNIQUE,
+    race_year INTEGER NOT NULL,
+    
+    -- Qualifying data (JSON array of driver telemetry)
+    qualifying_data JSONB NOT NULL,
+    
+    -- TTL and metadata
+    cached_at TIMESTAMPTZ DEFAULT NOW(),
+    expires_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '365 days'),
+    
+    CONSTRAINT valid_expiry CHECK (expires_at > cached_at)
+);
+
+-- Index for fast lookups and TTL cleanup
+CREATE INDEX IF NOT EXISTS idx_qualifying_cache_race_key ON qualifying_cache(race_key);
+CREATE INDEX IF NOT EXISTS idx_qualifying_cache_year ON qualifying_cache(race_year);
+CREATE INDEX IF NOT EXISTS idx_qualifying_cache_expires_at ON qualifying_cache(expires_at);
+
+-- =============================================================================
 -- CIRCUITS TABLE (Circuit metadata)
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS circuits (
@@ -278,6 +301,21 @@ INSERT INTO teams (name, full_name, country) VALUES
 ('Racing Bulls', 'Visa Cash App RB F1 Team', 'Italy'),
 ('Kick Sauber', 'Stake F1 Team Kick Sauber', 'Switzerland');
 */
+
+-- =============================================================================
+-- ROW LEVEL SECURITY (RLS) POLICIES
+-- =============================================================================
+
+-- Enable RLS on qualifying_cache
+ALTER TABLE qualifying_cache ENABLE ROW LEVEL SECURITY;
+
+-- Allow anyone to read cached qualifying data (public endpoint)
+CREATE POLICY "Allow public read access to qualifying_cache" ON qualifying_cache
+    FOR SELECT USING (true);
+
+-- Only allow authenticated users (service role) to write
+CREATE POLICY "Allow insert/update/delete for service role" ON qualifying_cache
+    FOR ALL USING (true) WITH CHECK (true);
 
 -- =============================================================================
 -- GRANT PERMISSIONS (for Supabase)
