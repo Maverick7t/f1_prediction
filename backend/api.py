@@ -37,7 +37,7 @@ from mlflow_manager import (
 from feature_store import get_feature_store, FeatureStore
 
 # Import Supabase prediction logger for accuracy tracking
-from database_v2 import get_prediction_logger, PredictionLogger
+from database_v2 import get_prediction_logger, PredictionLogger, get_qualifying_cache
 
 # Import file-based caching for expensive queries
 from file_cache import get_file_cache, CACHE_KEYS, CACHE_TTL
@@ -1960,6 +1960,11 @@ def qualifying_circuit_telemetry():
     """
     Returns comprehensive telemetry data for top 6 qualifying drivers (file-cached)
     Query params: year, event (optional, defaults to latest)
+    
+    CACHING STRATEGY:
+    - Latest session: Always from cache (30-second timeout protection)
+    - Specific session: From cache if available, else loads fresh (dev only)
+    - Production: Cache-only, no fresh loads (prevents worker timeout)
     """
     try:
         year = request.args.get('year', type=int)
@@ -1981,10 +1986,49 @@ def qualifying_circuit_telemetry():
                     "drivers": cached_result["drivers"],
                     "source": "file_cache"
                 }), 200
+            
+            # Cache miss on production: return helpful message instead of timeout
+            if config.FLASK_ENV == "production":
+                logger.warning("⚠️  No cached qualifying telemetry found in production")
+                return jsonify({
+                    "success": False,
+                    "error": "Qualifying data not yet cached",
+                    "message": "Qualifying telemetry cache is populated after each race weekend using: python scripts/cache_qualifying.py",
+                    "source": "cache_miss"
+                }), 404
         
-        # Load session
+        # Load session only in development (specific race queries allowed)
         if year and event:
-            session = fastf1.get_session(year, event, 'Q')
+            if config.FLASK_ENV == "production":
+                # Production: only serve cached data to prevent timeout
+                logger.info(f"Production mode: checking cache for {year} {event}")
+                try:
+                    qualifying_cache = get_qualifying_cache(config)
+                    race_key = f"{year}_*_{event.replace(' ', '_')}"
+                    # Try to retrieve from Supabase
+                    cached = qualifying_cache.get_cached_qualifying(race_key)
+                    if cached:
+                        logger.info(f"✓ Found cached session for {event}")
+                        return jsonify({
+                            "success": True,
+                            "drivers": cached,
+                            "source": "supabase_cache"
+                        }), 200
+                except Exception as e:
+                    logger.warning(f"Supabase cache check failed: {e}")
+                
+                # No cache found in production
+                logger.warning(f"⚠️  No cache found for {year} {event} in production")
+                return jsonify({
+                    "success": False,
+                    "error": "Qualifying data not cached",
+                    "message": f"Qualifying telemetry for {event} is not yet cached. Please run: python scripts/cache_qualifying.py {year} '{event}'",
+                    "source": "cache_miss"
+                }), 404
+            else:
+                # Development: allow fresh loads (no timeout risk locally)
+                logger.info(f"Development mode: loading fresh data for {year} {event}")
+                session = fastf1.get_session(year, event, 'Q')
         else:
             session = get_cached_qualifying_session()
         
@@ -1994,10 +2038,7 @@ def qualifying_circuit_telemetry():
                 "error": "Could not load qualifying session"
             }), 404
         
-        # TIMEOUT FIX: Load without telemetry to prevent 30s+ load time
-        # Render free tier kills workers after 30s - full telemetry takes 31s+
-        # Circuit map works fine with just lap data (X, Y, Speed from laps)
-        session.load(laps=True, telemetry=False, weather=False)
+        session.load(laps=True, telemetry=True, weather=False)
         
         # Get top 6 drivers
         results = session.results.sort_values('Position')
@@ -2016,18 +2057,10 @@ def qualifying_circuit_telemetry():
                     continue
                 
                 fastest_lap = driver_laps.pick_fastest()
+                telemetry = fastest_lap.get_telemetry()
                 
-                # Try to get telemetry (optional - may not be available)
-                telemetry = None
-                try:
-                    telemetry = fastest_lap.get_telemetry()
-                except:
-                    # Telemetry not available or disabled - use lap data only
-                    logger.debug(f"Telemetry not available for {driver_code}, using lap data")
-                
-                if telemetry is None or telemetry.empty:
-                    # Use lap data without telemetry details
-                    telemetry = None
+                if telemetry.empty:
+                    continue
                 
                 # Extract comprehensive telemetry data
                 lap_time = fastest_lap['LapTime'].total_seconds() if pd.notna(fastest_lap['LapTime']) else 0
