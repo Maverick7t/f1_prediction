@@ -158,3 +158,4 @@ timestamp,race,predicted,actual,correct,confidence,model_version
 2025-11-30T11:59:28.247051,United States Grand Prix,VER,,,79,v3
 2025-11-30T11:59:30.217339,Mexico City Grand Prix,NOR,,,22,v3
 2025-11-30T16:04:02.934013,Test Race,VER,,,75,v3
+2025-12-06T15:41:11.105052,Abu Dhabi Grand Prix,NOR,,,8,v3

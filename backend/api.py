@@ -1041,54 +1041,157 @@ def get_qualifying():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+def get_next_race_qualifying():
+    """
+    Fetch qualifying data for the next upcoming race.
+    Strategy:
+    1. Check Supabase cache first (fastest)
+    2. If not cached, try to use latest cached qualifying
+    3. Return race info + qualifying data
+    
+    Returns: (race_name, race_year, circuit, qualifying_data, race_key) or (None, None, None, None, None)
+    """
+    try:
+        logger.info("Getting next race qualifying...")
+        
+        year = 2025
+        schedule = fastf1.get_event_schedule(year)
+        schedule['EventDate'] = pd.to_datetime(schedule['EventDate'])
+        
+        today = pd.to_datetime(datetime.now().date())
+        
+        # Find next race (future races)
+        future_races = schedule[schedule['EventDate'] > today]
+        
+        if future_races.empty:
+            logger.warning("No upcoming races found for 2025, checking for completed races...")
+            # Fallback: use latest completed race
+            past_races = schedule[schedule['EventDate'] <= today]
+            if past_races.empty:
+                return None, None, None, None, None
+            next_race = past_races.sort_values('EventDate').iloc[-1]
+        else:
+            # Get the nearest upcoming race
+            next_race = future_races.sort_values('EventDate').iloc[0]
+        
+        # Extract race info (handle different column names)
+        race_name = next_race.get('EventName') or next_race.get('Event') or 'Unknown Race'
+        race_year = int(next_race.get('Year') or next_race.get('year') or 2025)
+        race_round = int(next_race.get('RoundNumber') or next_race.get('round') or 1)
+        race_key = f"{race_year}_{race_round}_{race_name.replace(' ', '_')}"
+        
+        logger.info(f"Next/Latest race: {race_name} (Round {race_round})")
+        
+        # Try to get cached qualifying first
+        cache = get_qualifying_cache(config)
+        cached_data = cache.get_cached_qualifying(race_key)
+        
+        if cached_data:
+            logger.info(f"✓ Using cached qualifying for {race_name}")
+            return race_name, race_year, race_name, cached_data, race_key
+        
+        # Try to fetch latest cached qualifying (any race)
+        latest_cache = cache.get_latest_cached_qualifying()
+        if latest_cache:
+            logger.info(f"✓ Using latest cached qualifying")
+            return race_name, race_year, race_name, latest_cache, race_key
+        
+        # If qualifying hasn't happened yet, return None
+        # This will trigger placeholder response in the endpoint
+        logger.warning(f"Qualifying not yet cached for {race_name}")
+        return race_name, race_year, race_name, None, race_key
+        
+    except Exception as e:
+        logger.error(f"Error getting next race qualifying: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return None, None, None, None, None
+
+
 @app.route('/api/predict/sao-paulo', methods=['GET'])
 def predict_sao_paulo():
-    """Hardcoded endpoint for São Paulo GP 2025"""
+    """Dynamic endpoint - predicts for the next upcoming race"""
     try:
-        qualifying = [
-            {"driver": "NOR", "team": "McLaren", "qualifying_position": 1},
-            {"driver": "ANT", "team": "Mercedes", "qualifying_position": 2},
-            {"driver": "LEC", "team": "Ferrari", "qualifying_position": 3},
-            {"driver": "PIA", "team": "McLaren", "qualifying_position": 4},
-            {"driver": "HAD", "team": "Racing Bulls", "qualifying_position": 5},
-            {"driver": "RUS", "team": "Mercedes", "qualifying_position": 6},
-            {"driver": "LAW", "team": "Racing Bulls", "qualifying_position": 7},
-            {"driver": "BEA", "team": "Haas", "qualifying_position": 8},
-            {"driver": "GAS", "team": "Alpine", "qualifying_position": 9},
-            {"driver": "HUL", "team": "Kick Sauber", "qualifying_position": 10},
-            {"driver": "ALO", "team": "Aston Martin", "qualifying_position": 11},
-            {"driver": "ALB", "team": "Williams", "qualifying_position": 12},
-            {"driver": "HAM", "team": "Ferrari", "qualifying_position": 13},
-            {"driver": "STR", "team": "Aston Martin", "qualifying_position": 14},
-            {"driver": "SAI", "team": "Williams", "qualifying_position": 15},
-            {"driver": "VER", "team": "Red Bull", "qualifying_position": 16},
-            {"driver": "OCO", "team": "Haas", "qualifying_position": 17},
-            {"driver": "COL", "team": "Alpine", "qualifying_position": 18},
-            {"driver": "TSU", "team": "Red Bull", "qualifying_position": 19},
-        ]
+        # Get next race info and qualifying
+        race_name, race_year, circuit, qualifying_data, race_key = get_next_race_qualifying()
         
-        qual_df = pd.DataFrame(qualifying)
+        # If no next race found, return error
+        if race_name is None:
+            return jsonify({
+                "success": False,
+                "error": "No upcoming races found"
+            }), 404
+        
+        # If qualifying data not available yet, use placeholder
+        if qualifying_data is None:
+            logger.warning(f"Qualifying not available for {race_name}, using placeholder")
+            return jsonify({
+                "success": True,
+                "data": {
+                    "winner_prediction": {
+                        "driver": "TBA",
+                        "team": "TBA",
+                        "p_win": 0,
+                        "percentage": 0,
+                        "confidence": "PENDING",
+                        "confidence_color": "#94a3b8"
+                    },
+                    "top3_prediction": [],
+                    "full_predictions": []
+                },
+                "race_info": {
+                    "name": race_name,
+                    "circuit": circuit,
+                    "country": "TBA",
+                    "year": race_year
+                },
+                "message": "Qualifying not yet completed"
+            })
+        
+        # Transform cached data to prediction format
+        if isinstance(qualifying_data, str):
+            import json
+            qualifying_data = json.loads(qualifying_data)
+        
+        # Handle different data formats
+        if isinstance(qualifying_data, list) and len(qualifying_data) > 0:
+            # Format: [{"code": "VER", "team": "Red Bull", "position": 1}, ...]
+            qual_list = []
+            for i, driver_entry in enumerate(qualifying_data):
+                entry = {
+                    'driver': driver_entry.get('code') or driver_entry.get('driver', 'UNK'),
+                    'team': driver_entry.get('team', 'Unknown'),
+                    'qualifying_position': driver_entry.get('position') or driver_entry.get('qualifying_position', i+1)
+                }
+                qual_list.append(entry)
+            qualifying_data = qual_list
+        
+        qual_df = pd.DataFrame(qualifying_data)
+        
+        # Run prediction
         predictions = infer_from_qualifying(
             qual_df,
-            race_key="2025__Sao_Paulo_Grand_Prix",
-            race_year=2025,
-            event="São Paulo Grand Prix",
-            circuit="Interlagos"
+            race_key=race_key,
+            race_year=race_year,
+            event=race_name,
+            circuit=circuit
         )
         
         return jsonify({
             "success": True,
             "data": predictions,
             "race_info": {
-                "name": "São Paulo Grand Prix",
-                "circuit": "Interlagos",
-                "country": "Brazil",
-                "year": 2025
+                "name": race_name,
+                "circuit": circuit,
+                "country": "TBA",
+                "year": race_year
             }
         })
     
     except Exception as e:
-        logger.error(f"São Paulo prediction error: {e}")
+        logger.error(f"Prediction error: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             "success": False,
             "error": str(e)
