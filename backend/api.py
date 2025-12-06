@@ -1828,24 +1828,27 @@ def get_cached_qualifying_session():
 def latest_qualifying_session_data():
     """Returns top 6 drivers from latest qualifying session with metadata"""
     try:
-        # Production: serve from cache only (prevent timeout)
+        # Production: serve from Supabase cache only (prevent timeout)
         if config.FLASK_ENV == "production":
-            cache = get_file_cache()
-            cache_key = CACHE_KEYS["QUALIFYING_TELEMETRY"]
-            cached_result = cache.get(cache_key, ttl_seconds=CACHE_TTL["QUALIFYING_TELEMETRY"])
+            try:
+                logger.info("✓ Checking Supabase for cached qualifying data...")
+                qualifying_cache = get_qualifying_cache(config)
+                
+                # Get all cached qualifying data, find the most recent
+                # For now, try to get data by searching for 2025 races
+                cached_data = qualifying_cache.get_cached_qualifying("2025")
+                
+                if cached_data:
+                    logger.info("✓ Found cached qualifying data in Supabase")
+                    return jsonify({
+                        "success": True,
+                        "data": cached_data[:6] if isinstance(cached_data, list) else cached_data,
+                        "source": "supabase_cache"
+                    }), 200
+            except Exception as e:
+                logger.debug(f"Supabase lookup failed: {e}")
             
-            if cached_result is not None:
-                logger.info("✓ Returning cached latest qualifying session")
-                # Extract top 6 from cached drivers
-                drivers = cached_result.get("drivers", [])
-                return jsonify({
-                    "success": True,
-                    "session_info": cached_result.get("session_info", {}),
-                    "top_6_drivers": drivers[:6],
-                    "source": "file_cache"
-                }), 200
-            
-            # Cache miss in production
+            # No cache found in production
             logger.warning("⚠️  No cached latest qualifying session in production")
             return jsonify({
                 "success": False,
@@ -1904,32 +1907,27 @@ def driver_telemetry_data():
                 "error": "driver_code required"
             }), 400
         
-        # Production: serve from cache only (prevent timeout)
+        # Production: serve from Supabase cache only (prevent timeout)
         if config.FLASK_ENV == "production":
-            cache = get_file_cache()
-            cache_key = CACHE_KEYS["QUALIFYING_TELEMETRY"]
-            cached_result = cache.get(cache_key, ttl_seconds=CACHE_TTL["QUALIFYING_TELEMETRY"])
-            
-            if cached_result is not None:
-                logger.info(f"✓ Returning cached telemetry for {driver_code}")
-                # Find driver in cached data
-                drivers = cached_result.get("drivers", [])
-                driver_data = next((d for d in drivers if d.get("code") == driver_code), None)
+            try:
+                logger.info(f"✓ Checking Supabase for cached telemetry for {driver_code}...")
+                qualifying_cache = get_qualifying_cache(config)
+                cached_data = qualifying_cache.get_cached_qualifying("2025")
                 
-                if driver_data:
-                    return jsonify({
-                        "success": True,
-                        "driver_data": driver_data,
-                        "source": "file_cache"
-                    }), 200
-                else:
-                    return jsonify({
-                        "success": False,
-                        "error": f"Driver {driver_code} not in cached qualifying data",
-                        "message": "Driver may not have qualified"
-                    }), 404
+                if cached_data and isinstance(cached_data, list):
+                    # Find driver in cached data
+                    driver_data = next((d for d in cached_data if d.get("code") == driver_code), None)
+                    if driver_data:
+                        logger.info(f"✓ Found cached telemetry for {driver_code}")
+                        return jsonify({
+                            "success": True,
+                            "driver_data": driver_data,
+                            "source": "supabase_cache"
+                        }), 200
+            except Exception as e:
+                logger.debug(f"Supabase lookup failed: {e}")
             
-            # Cache miss in production
+            # No cache found in production
             logger.warning(f"⚠️  No cached qualifying telemetry for {driver_code} in production")
             return jsonify({
                 "success": False,
@@ -2022,11 +2020,11 @@ def driver_telemetry_data():
 @app.route('/api/qualifying-circuit-telemetry')
 def qualifying_circuit_telemetry():
     """
-    Returns comprehensive telemetry data for top 6 qualifying drivers (file-cached)
+    Returns comprehensive telemetry data for top 6 qualifying drivers (cache-first)
     Query params: year, event (optional, defaults to latest)
     
     CACHING STRATEGY:
-    - Latest session: Always from cache (30-second timeout protection)
+    - Latest session: Always from Supabase cache (30-second timeout protection)
     - Specific session: From cache if available, else loads fresh (dev only)
     - Production: Cache-only, no fresh loads (prevents worker timeout)
     """
@@ -2036,20 +2034,23 @@ def qualifying_circuit_telemetry():
         
         logger.info(f"Loading qualifying telemetry for {year} {event}")
         
-        # Check cache first for latest session (most common query)
+        # Check Supabase cache first (all cases)
         if not year and not event:
-            cache = get_file_cache()
-            cache_key = CACHE_KEYS["QUALIFYING_TELEMETRY"]
-            cached_result = cache.get(cache_key, ttl_seconds=CACHE_TTL["QUALIFYING_TELEMETRY"])
-            
-            if cached_result is not None:
-                logger.info("✓ Returning cached qualifying telemetry")
-                return jsonify({
-                    "success": True,
-                    "session_info": cached_result["session_info"],
-                    "drivers": cached_result["drivers"],
-                    "source": "file_cache"
-                }), 200
+            # Latest session - check Supabase
+            try:
+                logger.info("✓ Checking Supabase for cached qualifying telemetry")
+                qualifying_cache = get_qualifying_cache(config)
+                cached_result = qualifying_cache.get_cached_qualifying("2025")
+                
+                if cached_result is not None:
+                    logger.info("✓ Returning cached qualifying telemetry from Supabase")
+                    return jsonify({
+                        "success": True,
+                        "drivers": cached_result if isinstance(cached_result, list) else [],
+                        "source": "supabase_cache"
+                    }), 200
+            except Exception as e:
+                logger.debug(f"Supabase cache check failed: {e}")
             
             # Cache miss on production: return helpful message instead of timeout
             if config.FLASK_ENV == "production":
@@ -2068,14 +2069,12 @@ def qualifying_circuit_telemetry():
                 logger.info(f"Production mode: checking cache for {year} {event}")
                 try:
                     qualifying_cache = get_qualifying_cache(config)
-                    race_key = f"{year}_*_{event.replace(' ', '_')}"
-                    # Try to retrieve from Supabase
-                    cached = qualifying_cache.get_cached_qualifying(race_key)
+                    cached = qualifying_cache.get_cached_qualifying(f"{year}")
                     if cached:
                         logger.info(f"✓ Found cached session for {event}")
                         return jsonify({
                             "success": True,
-                            "drivers": cached,
+                            "drivers": cached if isinstance(cached, list) else [],
                             "source": "supabase_cache"
                         }), 200
                 except Exception as e:

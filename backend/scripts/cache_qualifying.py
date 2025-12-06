@@ -25,7 +25,6 @@ import sys
 import logging
 from pathlib import Path
 from datetime import datetime, timedelta
-import json
 import numpy as np
 import pandas as pd
 import fastf1
@@ -35,7 +34,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config import config
 from database_v2 import get_qualifying_cache
-from file_cache import get_file_cache, CACHE_KEYS, CACHE_TTL
 
 # Configure logging
 logging.basicConfig(
@@ -200,26 +198,12 @@ def cache_qualifying(year: int, event_name: str = None):
         logger.error("❌ Failed to extract telemetry")
         return False
     
-    # Step 4: Save to cache (Supabase + File)
-    logger.info(f"\n[4/4] Saving to cache layers...")
+    # Step 4: Save to Supabase (persistent, survives Render restarts)
+    logger.info(f"\n[4/4] Saving to Supabase...")
     
     race_key = f"{year}_{race_round}_{race_name.replace(' ', '_')}"
     
-    session_info = {
-        "year": int(year),
-        "round": int(race_round),
-        "event": race_name,
-        "circuit": event.get('CircuitName', 'Unknown'),
-        "date": str(event['EventDate']).split(' ')[0],
-        "cached_at": datetime.now().isoformat()
-    }
-    
-    cache_data = {
-        "session_info": session_info,
-        "drivers": drivers_data
-    }
-    
-    # Save to Supabase
+    # Save to Supabase (persistent, survives Render restarts)
     logger.info("  📡 Saving to Supabase...")
     try:
         qualifying_cache = get_qualifying_cache(config)
@@ -229,20 +213,11 @@ def cache_qualifying(year: int, event_name: str = None):
             qualifying_data=drivers_data,
             ttl_hours=24*365  # Keep all season
         )
-        logger.info("  ✅ Saved to Supabase")
+        logger.info("  ✅ Saved to Supabase (persistent storage)")
     except Exception as e:
-        logger.warning(f"  ⚠️  Supabase save failed: {e}")
-    
-    # Save to file cache
-    logger.info("  💾 Saving to file cache...")
-    try:
-        file_cache = get_file_cache()
-        file_cache.set(CACHE_KEYS["QUALIFYING_TELEMETRY"], cache_data)
-        cache_file = file_cache._get_cache_file(CACHE_KEYS["QUALIFYING_TELEMETRY"])
-        file_size_kb = cache_file.stat().st_size / 1024
-        logger.info(f"  ✅ Saved to file cache ({file_size_kb:.1f} KB)")
-    except Exception as e:
-        logger.warning(f"  ⚠️  File cache save failed: {e}")
+        logger.error(f"  ❌ Supabase save FAILED: {e}")
+        logger.error("  ⚠️  Cache data will NOT be available in production")
+        return False
     
     # Summary
     logger.info("\n" + "=" * 70)
