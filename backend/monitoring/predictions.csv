@@ -170,3 +170,24 @@ timestamp,race,predicted,actual,correct,confidence,model_version
 2025-12-06T17:36:57.112477,Qatar Grand Prix,NOR,,,8,v3
 2025-12-06T17:37:02.195641,Abu Dhabi Grand Prix,NOR,,,8,v3
 2025-12-09T17:03:00.901496,Qatar Grand Prix,VER,,,61,v3
+2025-12-09T20:18:53.376652,Bahrain Grand Prix,VER,,,61,v3
+2025-12-09T20:18:54.943284,Saudi Arabian Grand Prix,VER,,,61,v3
+2025-12-09T20:18:55.924907,Australian Grand Prix,VER,,,61,v3
+2025-12-09T20:18:56.794702,Japanese Grand Prix,VER,,,61,v3
+2025-12-09T20:18:57.749785,Chinese Grand Prix,VER,,,61,v3
+2025-12-09T20:18:58.626329,Monaco Grand Prix,VER,,,61,v3
+2025-12-09T20:18:59.579180,Canadian Grand Prix,VER,,,61,v3
+2025-12-09T20:19:00.445341,Spanish Grand Prix,VER,,,61,v3
+2025-12-09T20:19:01.335423,Austrian Grand Prix,VER,,,61,v3
+2025-12-09T20:19:02.236363,British Grand Prix,VER,,,61,v3
+2025-12-09T20:19:03.197283,Hungarian Grand Prix,VER,,,61,v3
+2025-12-09T20:19:04.071874,Belgian Grand Prix,VER,,,61,v3
+2025-12-09T20:19:04.960091,Dutch Grand Prix,VER,,,61,v3
+2025-12-09T20:19:05.878673,Italian Grand Prix,VER,,,61,v3
+2025-12-09T20:19:06.917649,Azerbaijan Grand Prix,VER,,,61,v3
+2025-12-09T20:19:07.850652,United States Grand Prix,VER,,,61,v3
+2025-12-09T20:19:08.794600,Mexico City Grand Prix,VER,,,61,v3
+2025-12-09T20:19:09.731334,São Paulo Grand Prix,VER,,,61,v3
+2025-12-09T20:19:10.653598,Las Vegas Grand Prix,VER,,,61,v3
+2025-12-09T20:19:11.638247,Qatar Grand Prix,VER,,,61,v3
+2025-12-09T20:19:12.577172,Abu Dhabi Grand Prix,VER,,,61,v3
