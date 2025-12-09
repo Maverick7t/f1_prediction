@@ -1134,6 +1134,18 @@ def predict():
             data["circuit"]
         )
         
+        # Log prediction to database
+        try:
+            prediction_logger.log_prediction(
+                race_name=data["event"],
+                predicted_winner=predictions["winner_prediction"]["driver"],
+                confidence=predictions["winner_prediction"]["percentage"],
+                model_version="xgb_v3"
+            )
+            logger.info(f"✓ Prediction logged for {data['event']}")
+        except Exception as log_err:
+            logger.warning(f"Could not log prediction: {log_err}")
+        
         return jsonify({
             "success": True,
             "data": predictions
@@ -1439,6 +1451,18 @@ def get_next_race_prediction():
                 }
                 
                 logger.info(f"  ✓ Prediction: {prediction_data['predicted_winner']} ({prediction_data['predicted_confidence']}%)")
+                
+                # Log prediction to database
+                try:
+                    prediction_logger.log_prediction(
+                        race_name=race_name,
+                        predicted_winner=prediction_data['predicted_winner'],
+                        confidence=prediction_data['predicted_confidence'],
+                        model_version="xgb_v3"
+                    )
+                    logger.info(f"  ✓ Prediction logged to database")
+                except Exception as log_err:
+                    logger.warning(f"  Could not log prediction to database: {log_err}")
                 
             except Exception as e:
                 logger.error(f"  Prediction error: {e}")
