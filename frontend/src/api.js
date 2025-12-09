@@ -118,7 +118,24 @@ export async function fetchSaoPauloPredictions() {
             throw new Error(result.error || 'Prediction failed');
         }
 
-        return result.data;
+        // The backend returns race_history and next_race, not full_predictions
+        // Transform next_race prediction to match expected format
+        const nextRace = result.next_race;
+        if (!nextRace) {
+            throw new Error('No next race prediction available');
+        }
+
+        return {
+            winner_prediction: {
+                driver: nextRace.predicted_winner,
+                team: nextRace.team || 'Unknown',
+                percentage: nextRace.predicted_confidence,
+                confidence: 'HIGH'
+            },
+            top3_prediction: nextRace.predicted_top3 || [],
+            full_predictions: nextRace.full_predictions || [],
+            race_history: result.race_history || []
+        };
     } catch (error) {
         console.error('Error fetching predictions:', error);
         throw error;
@@ -173,6 +190,11 @@ export async function checkAPIHealth() {
  * Transform API predictions to frontend format
  */
 export function transformPredictionsToDriverData(predictions) {
+    if (!predictions || !predictions.full_predictions) {
+        console.warn('No full_predictions in predictions object:', predictions);
+        return [];
+    }
+
     const teamColors = {
         'McLaren': '#ea580c',
         'Mercedes': '#64748b',
@@ -189,11 +211,11 @@ export function transformPredictionsToDriverData(predictions) {
     return predictions.full_predictions.slice(0, 6).map((pred, idx) => ({
         name: pred.driver,
         team: pred.team,
-        percentage: pred.percentage,
+        percentage: pred.percentage || pred.win_prob || 0,
         teamColor: teamColors[pred.team] || '#64748b',
         position: idx + 1,
         points: 0, // Not available from API
-        predictedWin: pred.p_win,
+        predictedWin: pred.p_win || pred.win_prob || 0,
         confidence: pred.confidence || 'MEDIUM',
         confidenceColor: pred.confidence_color || '#f59e0b'
     }));
