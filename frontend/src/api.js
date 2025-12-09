@@ -125,8 +125,8 @@ export async function fetchSaoPauloPredictions() {
         // If no next race, show the most recent race with "waiting for next race" message
         if (!nextRace) {
             // Get most recent race from history
-            const mostRecentRace = raceHistory && raceHistory.length > 0 
-                ? raceHistory[0] 
+            const mostRecentRace = raceHistory && raceHistory.length > 0
+                ? raceHistory[0]
                 : null;
 
             return {
