@@ -167,3 +167,6 @@ timestamp,race,predicted,actual,correct,confidence,model_version
 2025-12-06T16:09:19.833972,Abu Dhabi Grand Prix,NOR,,,8,v3
 2025-12-06T17:24:40.571429,Qatar Grand Prix,NOR,,,8,v3
 2025-12-06T17:24:45.957008,Abu Dhabi Grand Prix,NOR,,,8,v3
+2025-12-06T17:36:57.112477,Qatar Grand Prix,NOR,,,8,v3
+2025-12-06T17:37:02.195641,Abu Dhabi Grand Prix,NOR,,,8,v3
+2025-12-09T17:03:00.901496,Qatar Grand Prix,VER,,,61,v3

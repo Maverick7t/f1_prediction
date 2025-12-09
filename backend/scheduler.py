@@ -15,14 +15,13 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent))
 
 from config import config
-from database_v2 import get_qualifying_cache
+from database_v2 import get_qualifying_cache, get_prediction_logger
+from prediction_cache import get_prediction_cache
 
 logger = logging.getLogger(__name__)
 
 # FastF1 cache setup
 fastf1.Cache.enable_cache(str(config.FASTF1_CACHE_DIR))
-
-scheduler = BackgroundScheduler()
 
 def check_and_cache_latest_qualifying():
     """

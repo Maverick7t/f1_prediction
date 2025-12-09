@@ -658,111 +658,250 @@ def get_confidence_level(percentage):
     }
 
 
+def compute_basic_features(df):
+    """
+    🔥 CRITICAL FUNCTION: Computes all features dynamically from merged data
+    
+    This is THE KEY to making predictions realistic instead of all rookies.
+    It calculates features using full historical context for each driver.
+    
+    Takes merged dataset (historical 2018-2024 + current race qualifying)
+    Returns same dataset with computed features added.
+    
+    Features computed:
+    - RecentFormAvg: Rolling average of last 5 races (finish position)
+    - CircuitHistoryAvg: Career average finish position at this circuit
+    - DriverExperienceScore: Normalized by total career races
+    - TeamPerfScore: How good is the team this season?
+    - EloRating: Elo rating (if available)
+    """
+    df = df.copy()
+    df = df.sort_values(['driver', 'race_year', 'event_date']).reset_index(drop=True)
+    
+    # Convert finishing position to numeric
+    df['finishing_position_num'] = pd.to_numeric(df['finishing_position'], errors='coerce')
+    median_finish = df['finishing_position_num'].median()
+    
+    logger.debug(f"[compute_basic_features] Input: {len(df)} rows, {df['driver'].nunique()} drivers")
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # FEATURE 1: RecentFormAvg - Rolling average of last 5 races
+    # ═══════════════════════════════════════════════════════════════════
+    # This is the driver's recent form - how they've been finishing
+    # Lower is better (1st place = 1, 20th place = 20)
+    df['RecentFormAvg'] = (
+        df.groupby('driver')['finishing_position_num']
+          .transform(lambda x: x.shift(1)                    # Exclude current race
+                                .rolling(5, min_periods=1)   # Last 5 races
+                                .mean())
+          .fillna(median_finish)
+    )
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # FEATURE 2: CircuitHistoryAvg - Career average at this circuit
+    # ═══════════════════════════════════════════════════════════════════
+    # How has this driver done at this specific circuit historically?
+    df['CircuitHistoryAvg'] = (
+        df.groupby(['driver', 'circuit'])['finishing_position_num']
+          .transform(lambda x: x.shift(1)                    # Exclude current race
+                                .expanding(min_periods=1)    # All previous races
+                                .mean())
+          .fillna(median_finish)
+    )
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # FEATURE 3: DriverExperienceScore - How many races have they done?
+    # ═══════════════════════════════════════════════════════════════════
+    # Normalized by max races in dataset (e.g., veteran = 1.0, rookie = 0.1)
+    df['TotalRaces'] = df.groupby('driver').cumcount()
+    max_races = df['TotalRaces'].max() if df['TotalRaces'].notna().any() else 1
+    df['DriverExperienceScore'] = (df['TotalRaces'] / max(1, max_races)).fillna(0)
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # FEATURE 4: TeamPerfScore - How good is the team this year?
+    # ═══════════════════════════════════════════════════════════════════
+    # Calculate average finishing position for each team in each year
+    team_perf_yearly = (
+        df.dropna(subset=['finishing_position_num'])
+          .groupby(['race_year', 'team'])['finishing_position_num']
+          .mean()
+          .reset_index()
+          .rename(columns={'finishing_position_num': 'team_avg_finish'})
+    )
+    
+    df = df.merge(team_perf_yearly, on=['race_year', 'team'], how='left')
+    
+    # Normalize: best team = 1.0, worst team = 0.0
+    if df['team_avg_finish'].notna().any():
+        df['TeamPerfScore'] = (
+            df.groupby('race_year')['team_avg_finish']
+              .transform(lambda x: (x.max() - x) / (x.max() - x.min() + 0.001)
+                         if x.max() != x.min() else 0.5)
+        )
+    else:
+        df['TeamPerfScore'] = 0.5
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # FEATURE 5: EloRating - If available, else default 1500
+    # ═══════════════════════════════════════════════════════════════════
+    if 'elo_before' in df.columns:
+        df['EloRating'] = pd.to_numeric(df['elo_before'], errors='coerce').fillna(1500.0)
+    elif 'EloRating' not in df.columns:
+        df['EloRating'] = 1500.0
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # Fill any remaining NaN values with defaults
+    # ═══════════════════════════════════════════════════════════════════
+    for col in ['RecentFormAvg', 'CircuitHistoryAvg', 'DriverExperienceScore', 
+                'TeamPerfScore', 'EloRating']:
+        if col not in df.columns:
+            df[col] = 0 if col != 'EloRating' else 1500.0
+        else:
+            if col == 'EloRating':
+                df[col] = df[col].fillna(1500.0)
+            elif col == 'TeamPerfScore':
+                df[col] = df[col].fillna(0.5)
+            else:
+                df[col] = df[col].fillna(0)
+    
+    logger.debug(f"[compute_basic_features] Output: Features computed for {df['driver'].nunique()} drivers")
+    
+    return df
+
+
 def infer_from_qualifying(qual_df, race_key, race_year, event, circuit):
     """
-    Generate predictions from qualifying data using pre-computed features.
+    Generate predictions from qualifying data using DYNAMIC feature computation.
     
-    OPTIMIZED: Uses FeatureStore for instant feature lookup instead of
-    computing from 7 years of CSV data on every request.
+    🔥 KEY CHANGE: Now merges qualifying with historical data BEFORE computing features
+    This gives features proper context (driver experience, form, circuit history)
+    instead of defaulting all new drivers to "rookie" status.
     
-    Required model features:
-    - qualifying_position (from qualifying data)
-    - TeamPerfScore (from team snapshot)
-    - EloRating (from driver snapshot)
-    - RecentFormAvg (from driver snapshot)
-    - CircuitHistoryAvg (from circuit snapshot)
-    - DriverExperienceScore (from driver snapshot)
-    - driver_enc, team_enc, circuit_enc (encoded categoricals)
+    Flow:
+    1. Prepare qualifying data (add metadata)
+    2. MERGE with historical data (2018-2024)
+    3. Compute ALL features dynamically using merged dataset
+    4. Extract race rows and make predictions
     """
     import time
     start = time.time()
     
+    # Step 1: Prepare qualifying data
     q = qual_df.copy()
     q["race_key"] = race_key
     q["race_year"] = race_year
     q["event"] = event
     q["circuit"] = circuit
     
-    # Get pre-computed features from FeatureStore (cached, instant)
-    driver_codes = q["driver"].tolist()
-    teams = q["team"].tolist() if "team" in q.columns else [None] * len(driver_codes)
+    # Ensure required columns exist
+    if "qualifying_position" not in q.columns and "qualifyingposition" not in q.columns:
+        q["qualifying_position"] = range(1, len(q) + 1)
     
-    # Fetch features for all drivers efficiently
-    feature_rows = []
-    for i, driver in enumerate(driver_codes):
-        team = teams[i] if i < len(teams) else None
+    if "qualifying_position" not in q.columns:
+        q.rename(columns={"qualifyingposition": "qualifying_position"}, inplace=True)
+    
+    if "team" not in q.columns:
+        q["team"] = "Unknown"
+    
+    # Step 2: 🔥 MERGE with historical data (CRITICAL for realistic features!)
+    # This is what was missing - FeatureStore approach uses defaults!
+    try:
+        logger.debug(f"[infer] Merging {len(q)} qualifying with {len(hist_data)} historical rows...")
         
-        # Get pre-computed driver features (RecentFormAvg, EloRating, TotalRaces, etc.)
-        driver_features = feature_store.get_driver_features(driver)
+        # Select columns that exist in both datasets
+        q_cols = [c for c in q.columns if c in hist_data.columns or c in ['race_key', 'race_year', 'event', 'circuit']]
         
-        # Get circuit-specific history (cached per driver+circuit pair)
-        circuit_history = feature_store.get_circuit_history(driver, circuit)
+        # Add missing required columns to qualifying
+        for col in hist_data.columns:
+            if col not in q.columns:
+                if col == 'finishing_position':
+                    q[col] = np.nan  # To be predicted
+                elif col == 'event_date':
+                    q[col] = pd.NaT
+                else:
+                    q[col] = None
         
-        # Get team performance score for this year
-        team_perf = feature_store.get_team_perf_score(team, race_year) if team else 0.5
+        # Concatenate
+        merged = pd.concat([
+            hist_data,
+            q[hist_data.columns.tolist()]
+        ], ignore_index=True, sort=False)
         
-        feature_rows.append({
-            "driver": driver,
-            "RecentFormAvg": driver_features.get("RecentFormAvg", 10.0),
-            "EloRating": driver_features.get("EloRating", 1500.0),
-            "DriverExperienceScore": driver_features.get("DriverExperienceScore", 0.0),
-            "CircuitHistoryAvg": circuit_history,
-            "TeamPerfScore": team_perf,
-        })
+        logger.debug(f"[infer] Merged dataset: {len(merged)} rows")
+        
+    except Exception as e:
+        logger.warning(f"[infer] Merge failed, continuing without historical context: {e}")
+        merged = q
     
-    features_df = pd.DataFrame(feature_rows)
+    # Step 3: 🔥 COMPUTE FEATURES DYNAMICALLY (instead of FeatureStore lookup!)
+    try:
+        logger.debug(f"[infer] Computing features from merged data...")
+        merged = compute_basic_features(merged)
+        logger.debug(f"[infer] Feature computation complete")
+    except Exception as e:
+        logger.warning(f"[infer] Feature computation failed: {e}")
+        # Fallback to defaults
+        for col in ['RecentFormAvg', 'CircuitHistoryAvg', 'DriverExperienceScore', 'TeamPerfScore', 'EloRating']:
+            if col not in merged.columns:
+                merged[col] = 0 if col != 'EloRating' else 1500.0
     
-    # Merge qualifying data with pre-computed features
-    race_rows = q.merge(features_df, on="driver", how="left")
+    # Step 4: Extract only the target race rows
+    race_rows = merged[merged['race_key'] == race_key].copy()
     
-    # Fill missing features with defaults (for rookies/new drivers)
-    race_rows["RecentFormAvg"] = race_rows["RecentFormAvg"].fillna(10.0)
-    race_rows["EloRating"] = race_rows["EloRating"].fillna(1500.0)
-    race_rows["DriverExperienceScore"] = race_rows["DriverExperienceScore"].fillna(0.0)
-    race_rows["CircuitHistoryAvg"] = race_rows["CircuitHistoryAvg"].fillna(10.0)
-    race_rows["TeamPerfScore"] = race_rows["TeamPerfScore"].fillna(0.5)
+    if len(race_rows) == 0:
+        # If race_key not found, try using event as fallback
+        race_rows = merged[merged['event'] == event].copy()
     
-    # Ensure all feature columns exist
-    for col in feature_cols:
-        if col not in race_rows.columns:
-            race_rows[col] = 0
-
-    # Encode categorical features
+    if len(race_rows) == 0:
+        # Last resort: use last rows from merged data (should be the new race)
+        race_rows = merged.tail(len(q)).copy()
+    
+    logger.debug(f"[infer] Extracted {len(race_rows)} rows for race prediction")
+    
+    # Step 5: Encode categorical features
     for c in ["driver", "team", "circuit"]:
-        le = encoders[c]
-        classes = list(le.classes_)
-        mapped = []
-        for v in race_rows[c].astype(str):
-            if v in classes:
-                mapped.append(classes.index(v))
-            else:
-                mapped.append(len(classes))
-        race_rows[f"{c}_enc"] = mapped
-
+        if c in race_rows.columns:
+            le = encoders[c]
+            classes = list(le.classes_)
+            mapped = []
+            for v in race_rows[c].astype(str):
+                if v in classes:
+                    mapped.append(classes.index(v))
+                else:
+                    mapped.append(len(classes))  # Unknown class
+            race_rows[f"{c}_enc"] = mapped
+        else:
+            race_rows[f"{c}_enc"] = 0
+    
+    # Step 6: Prepare feature matrix
     X = race_rows[feature_cols].fillna(0)
     
-    logger.debug(f"Feature preparation took {time.time() - start:.3f}s")
-    logger.debug(f"Features prepared: {list(X.columns)}")
-
-    # Predict
-    race_rows["p_win"] = model_win.predict_proba(X)[:,1]
-    race_rows["p_pod"] = model_pod.predict_proba(X)[:,1]
-
-    # Hybrid podium ranking
+    logger.debug(f"[infer] Features: {list(X.columns)}")
+    logger.debug(f"[infer] Feature matrix shape: {X.shape}")
+    
+    # Step 7: Make predictions
+    race_rows["p_win"] = model_win.predict_proba(X)[:, 1]
+    race_rows["p_pod"] = model_pod.predict_proba(X)[:, 1]
+    
+    logger.debug(f"[infer] Predictions made in {time.time() - start:.2f}s")
+    
+    # Step 8: Hybrid podium ranking (60% podium ML + 40% qualifying)
     max_grid = int(race_rows["qualifying_position"].max(skipna=True)) if race_rows["qualifying_position"].notna().any() else 20
     qual = race_rows["qualifying_position"].fillna(max_grid)
     qual_score = 1 - ((qual - 1) / max(1, max_grid - 1))
     race_rows["hybrid_score"] = 0.6 * race_rows["p_pod"] + 0.4 * qual_score
-
-    # Build outputs
+    
+    # Step 9: Determine winner and top 3
     winner = race_rows.sort_values("p_win", ascending=False).iloc[0]
     hybrid_board = race_rows.sort_values("hybrid_score", ascending=False)
-
-    # Calculate winner confidence
+    
+    # Calculate confidence
     winner_pct = int(float(winner["p_win"]) * 100)
     winner_confidence = get_confidence_level(winner_pct)
     
-    # Log prediction in MLflow (local tracking)
+    logger.info(f"[infer] Prediction: {winner['driver']} {winner_pct}% ({winner_confidence['level']})")
+    
+    # Log to MLflow
     try:
         log_prediction(
             race_name=event,
@@ -773,47 +912,54 @@ def infer_from_qualifying(qual_df, race_key, race_year, event, circuit):
     except Exception as e:
         logger.debug(f"MLflow prediction logging skipped: {e}")
     
-    # Log prediction to Supabase (production tracking)
+    # Queue to Supabase (batch sync)
     try:
-        prediction_logger.log_prediction(
-            race_name=event,
-            predicted_winner=winner["driver"],
-            confidence=winner_pct,
-            model_version="v3"
+        pred_cache = get_prediction_cache()
+        pred_cache.add_prediction(
+            race_key=race_key,
+            prediction_data={
+                "race_name": event,
+                "predicted_winner": winner["driver"],
+                "confidence": winner_pct,
+                "model_version": "v3"
+            }
         )
     except Exception as e:
-        logger.debug(f"Supabase prediction logging skipped: {e}")
-
+        logger.debug(f"Prediction cache queueing failed: {e}")
+    
     return {
         "winner_prediction": {
-            "driver": winner["driver"], 
-            "team": winner.get("team", None), 
+            "driver": winner["driver"],
+            "team": winner.get("team", None),
             "p_win": float(winner["p_win"]),
             "percentage": winner_pct,
             "confidence": winner_confidence["level"],
             "confidence_color": winner_confidence["color"]
         },
-        "top3_prediction": hybrid_board.head(3)[["driver","team","hybrid_score","p_pod"]].apply(
+        "top3_prediction": hybrid_board.head(3)[["driver", "team", "hybrid_score", "p_pod"]].apply(
             lambda row: {
                 "driver": row["driver"],
                 "team": row["team"],
                 "hybrid_score": float(row["hybrid_score"]),
-                "percentage": int(float(row["hybrid_score"]) * 100),
-                "confidence": get_confidence_level(int(float(row["hybrid_score"]) * 100))["level"],
-                "confidence_color": get_confidence_level(int(float(row["hybrid_score"]) * 100))["color"]
-            }, axis=1
+                "percentage": int(float(row["p_pod"]) * 100),
+                "confidence": get_confidence_level(int(float(row["p_pod"]) * 100))["level"],
+                "confidence_color": get_confidence_level(int(float(row["p_pod"]) * 100))["color"]
+            },
+            axis=1
         ).tolist(),
-        "full_predictions": race_rows.sort_values("p_win", ascending=False)[["driver","team","p_win","p_pod","hybrid_score"]].apply(
+        "full_predictions": race_rows.sort_values("hybrid_score", ascending=False)[[
+            "driver", "team", "qualifying_position", "p_win", "p_pod", "hybrid_score"
+        ]].apply(
             lambda row: {
                 "driver": row["driver"],
                 "team": row["team"],
-                "p_win": float(row["p_win"]),
-                "percentage": int(float(row["p_win"]) * 100),
-                "confidence": get_confidence_level(int(float(row["p_win"]) * 100))["level"],
-                "confidence_color": get_confidence_level(int(float(row["p_win"]) * 100))["color"]
-            }, axis=1
-        ).tolist(),
-        "confidence_thresholds": CONFIDENCE_THRESHOLDS
+                "grid": int(row["qualifying_position"]) if pd.notna(row["qualifying_position"]) else 0,
+                "win_prob": round(float(row["p_win"]) * 100, 1),
+                "podium_prob": round(float(row["p_pod"]) * 100, 1),
+                "hybrid_score": round(float(row["hybrid_score"]), 3)
+            },
+            axis=1
+        ).tolist()
     }
 
 
@@ -1078,12 +1224,13 @@ def get_races_with_predictions_and_history():
                 
                 logger.info(f"Processing race: {race_name} ({race_date.strftime('%Y-%m-%d')})")
                 
-                # 1. Try to get qualifying data from cache FIRST (fast)
+                # 1. Try to get qualifying data from PREDICTION CACHE FIRST (fast, in-memory, no HTTP)
                 qual_data = None
                 
                 try:
-                    cache = get_qualifying_cache(config)
-                    cached_qual = cache.get_cached_qualifying(race_key)
+                    # Use new PredictionCache instead of Supabase queries
+                    pred_cache = get_prediction_cache()
+                    cached_qual = pred_cache.get_qualifying(race_key)
                     
                     if cached_qual:
                         if isinstance(cached_qual, str):
@@ -1100,10 +1247,10 @@ def get_races_with_predictions_and_history():
                                 if 'position' in entry and 'qualifying_position' not in entry:
                                     entry['qualifying_position'] = entry.pop('position')
                         
-                        logger.info(f"  ✓ Got qualifying from cache: {len(qual_data) if isinstance(qual_data, list) else 1} drivers")
+                        logger.info(f"  ✓ Got qualifying from MEMORY cache (no HTTP): {len(qual_data) if isinstance(qual_data, list) else 1} drivers")
                         
                 except Exception as e:
-                    logger.debug(f"Cache lookup failed: {e}")
+                    logger.debug(f"Memory cache lookup failed: {e}")
                     qual_data = None
                 
                 # If no cached data, skip FastF1 fetch (too slow on Render, causes timeout)
@@ -1221,12 +1368,13 @@ def get_next_race_prediction():
         
         logger.info(f"Next race: {race_name} ({race_date.strftime('%Y-%m-%d')})")
         
-        # Get qualifying data (from cache or latest available)
+        # Get qualifying data (from MEMORY cache first - no HTTP calls!)
         qual_data = None
         
         try:
-            cache = get_qualifying_cache(config)
-            cached_qual = cache.get_cached_qualifying(race_key)
+            # Use new PredictionCache instead of Supabase queries
+            pred_cache = get_prediction_cache()
+            cached_qual = pred_cache.get_qualifying(race_key)
             
             if cached_qual:
                 if isinstance(cached_qual, str):
@@ -1243,8 +1391,8 @@ def get_next_race_prediction():
                         if 'position' in entry and 'qualifying_position' not in entry:
                             entry['qualifying_position'] = entry.pop('position')
             else:
-                # Use latest cached qualifying from any race
-                latest = cache.get_latest_cached_qualifying()
+                # Use latest cached qualifying from any race (still in memory, no Supabase!)
+                latest = pred_cache.get_latest_qualifying()
                 if latest:
                     if isinstance(latest, str):
                         import json
@@ -1260,13 +1408,13 @@ def get_next_race_prediction():
                             if 'position' in entry and 'qualifying_position' not in entry:
                                 entry['qualifying_position'] = entry.pop('position')
                     
-                    logger.info(f"  Using latest cached qualifying (different race)")
+                    logger.info(f"  Using latest cached qualifying from memory (different race)")
                 else:
-                    logger.warning(f"  No qualifying data cached yet")
+                    logger.warning(f"  No qualifying data in memory cache yet")
                     qual_data = None
                     
         except Exception as e:
-            logger.debug(f"Cache lookup failed: {e}")
+            logger.debug(f"Memory cache lookup failed: {e}")
             qual_data = None
         
         # If we have qualifying, run prediction
@@ -1304,6 +1452,7 @@ def get_next_race_prediction():
             "predicted_winner": prediction_data["predicted_winner"],
             "predicted_confidence": prediction_data["predicted_confidence"],
             "predicted_top3": prediction_data["top3"],
+            "full_predictions": prediction_data.get("full_predictions", []),
             "status": prediction_data["status"]
         }
         
