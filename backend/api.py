@@ -914,18 +914,14 @@ def infer_from_qualifying(qual_df, race_key, race_year, event, circuit):
     
     # Queue to Supabase (batch sync)
     try:
-        pred_cache = get_prediction_cache()
-        pred_cache.add_prediction(
+        qual_cache = get_qualifying_cache()
+        qual_cache.cache_qualifying(
             race_key=race_key,
-            prediction_data={
-                "race_name": event,
-                "predicted_winner": winner["driver"],
-                "confidence": winner_pct,
-                "model_version": "v3"
-            }
+            race_year=year,
+            qualifying_data=prediction["full_predictions"]
         )
     except Exception as e:
-        logger.debug(f"Prediction cache queueing failed: {e}")
+        logger.debug(f"Qualifying cache queueing failed: {e}")
     
     return {
         "winner_prediction": {
@@ -1240,9 +1236,9 @@ def get_races_with_predictions_and_history():
                 qual_data = None
                 
                 try:
-                    # Use new PredictionCache instead of Supabase queries
-                    pred_cache = get_prediction_cache()
-                    cached_qual = pred_cache.get_qualifying(race_key)
+                    # Use QualifyingCache instead of Supabase queries
+                    qual_cache = get_qualifying_cache()
+                    cached_qual = qual_cache.get_cached_qualifying(race_key)
                     
                     if cached_qual:
                         if isinstance(cached_qual, str):
@@ -1384,9 +1380,9 @@ def get_next_race_prediction():
         qual_data = None
         
         try:
-            # Use new PredictionCache instead of Supabase queries
-            pred_cache = get_prediction_cache()
-            cached_qual = pred_cache.get_qualifying(race_key)
+            # Use QualifyingCache instead of Supabase queries
+            qual_cache = get_qualifying_cache()
+            cached_qual = qual_cache.get_cached_qualifying(race_key)
             
             if cached_qual:
                 if isinstance(cached_qual, str):
@@ -1404,7 +1400,7 @@ def get_next_race_prediction():
                             entry['qualifying_position'] = entry.pop('position')
             else:
                 # Use latest cached qualifying from any race (still in memory, no Supabase!)
-                latest = pred_cache.get_latest_qualifying()
+                latest = qual_cache.get_latest_cached_qualifying()
                 if latest:
                     if isinstance(latest, str):
                         import json
