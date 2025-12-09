@@ -166,7 +166,7 @@ export default function Dashboard() {
           borderRadius: '10px',
           padding: '40px',
           textAlign: 'center',
-          maxWidth: '700px',
+          maxWidth: '900px',
           margin: '0 auto'
         }}>
           <div style={{
@@ -177,46 +177,156 @@ export default function Dashboard() {
             fontSize: '24px',
             fontWeight: '700',
             color: '#3b82f6',
-            marginBottom: '12px'
+            marginBottom: '24px'
           }}>
             2025 Season Complete!
           </div>
+
+          {/* Model Performance Stats */}
           <div style={{
-            fontSize: '14px',
-            color: '#cbd5e1',
-            marginBottom: '24px'
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: '20px',
+            marginBottom: '30px'
           }}>
-            The 2025 F1 season has concluded. Predictions will resume when the 2026 season begins.
-          </div>
-          {mostRecentRace && (
+            {/* Total Races */}
             <div style={{
               backgroundColor: 'rgba(30, 41, 59, 0.8)',
               borderRadius: '8px',
               padding: '20px',
-              marginBottom: '20px',
-              textAlign: 'left'
+              border: '1px solid rgba(59, 130, 246, 0.2)'
             }}>
               <div style={{
                 fontSize: '12px',
                 color: '#94a3b8',
                 marginBottom: '8px'
-              }}>Most Recent Race</div>
+              }}>Total Races</div>
               <div style={{
-                fontSize: '18px',
+                fontSize: '28px',
+                fontWeight: '700',
+                color: '#3b82f6'
+              }}>
+                {raceHistory.length}
+              </div>
+            </div>
+
+            {/* Correct Predictions */}
+            <div style={{
+              backgroundColor: 'rgba(30, 41, 59, 0.8)',
+              borderRadius: '8px',
+              padding: '20px',
+              border: '1px solid rgba(34, 197, 94, 0.2)'
+            }}>
+              <div style={{
+                fontSize: '12px',
+                color: '#94a3b8',
+                marginBottom: '8px'
+              }}>Correct Predictions</div>
+              <div style={{
+                fontSize: '28px',
+                fontWeight: '700',
+                color: '#22c55e'
+              }}>
+                {raceHistory.filter(r => r.correct).length}
+              </div>
+            </div>
+
+            {/* Model Accuracy */}
+            <div style={{
+              backgroundColor: 'rgba(30, 41, 59, 0.8)',
+              borderRadius: '8px',
+              padding: '20px',
+              border: '1px solid rgba(250, 204, 21, 0.2)'
+            }}>
+              <div style={{
+                fontSize: '12px',
+                color: '#94a3b8',
+                marginBottom: '8px'
+              }}>Win Prediction Accuracy</div>
+              <div style={{
+                fontSize: '28px',
+                fontWeight: '700',
+                color: '#facc15'
+              }}>
+                {raceHistory.length > 0
+                  ? Math.round((raceHistory.filter(r => r.correct).length / raceHistory.length) * 100)
+                  : 0}%
+              </div>
+            </div>
+          </div>
+
+          {/* Recent Race Results */}
+          {raceHistory.length > 0 && (
+            <div style={{
+              marginBottom: '30px'
+            }}>
+              <div style={{
+                fontSize: '14px',
                 fontWeight: '700',
                 color: '#e2e8f0',
-                marginBottom: '8px'
+                marginBottom: '16px',
+                textAlign: 'left'
               }}>
-                {mostRecentRace.race_name || 'Abu Dhabi Grand Prix'}
+                Recent Race Results
               </div>
               <div style={{
-                fontSize: '13px',
-                color: '#cbd5e1'
+                display: 'grid',
+                gap: '8px',
+                maxHeight: '300px',
+                overflowY: 'auto'
               }}>
-                Winner: {mostRecentRace.actual_winner || 'N/A'}
+                {raceHistory.slice(0, 5).map((race, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                      borderRadius: '6px',
+                      padding: '12px',
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr 0.5fr',
+                      gap: '12px',
+                      alignItems: 'center',
+                      textAlign: 'left',
+                      borderLeft: `4px solid ${race.correct ? '#22c55e' : '#ef4444'}`
+                    }}
+                  >
+                    <div>
+                      <div style={{
+                        fontSize: '12px',
+                        color: '#94a3b8'
+                      }}>
+                        {race.race_name || `Race ${idx + 1}`}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{
+                        fontSize: '11px',
+                        color: '#cbd5e1',
+                        marginBottom: '4px'
+                      }}>
+                        <span style={{ color: '#fbbf24' }}>Predicted:</span> {race.predicted_winner || 'N/A'}
+                      </div>
+                      <div style={{
+                        fontSize: '11px',
+                        color: '#cbd5e1'
+                      }}>
+                        <span style={{ color: '#10b981' }}>Actual:</span> {race.actual_winner || 'N/A'}
+                      </div>
+                    </div>
+                    <div style={{
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      color: race.correct ? '#22c55e' : '#ef4444',
+                      textAlign: 'center'
+                    }}>
+                      {race.correct ? '✓' : '✗'}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
+
           <button
             onClick={() => setActiveTab('history')}
             style={{
@@ -227,10 +337,13 @@ export default function Dashboard() {
               borderRadius: '6px',
               cursor: 'pointer',
               fontSize: '14px',
-              fontWeight: '600'
+              fontWeight: '600',
+              transition: 'background-color 0.2s'
             }}
+            onMouseEnter={(e) => e.target.style.backgroundColor = '#2563eb'}
+            onMouseLeave={(e) => e.target.style.backgroundColor = '#3b82f6'}
           >
-            View Season Statistics
+            View Full Season Statistics
           </button>
         </div>
       )}
