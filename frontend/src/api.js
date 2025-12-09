@@ -119,13 +119,35 @@ export async function fetchSaoPauloPredictions() {
         }
 
         // The backend returns race_history and next_race, not full_predictions
-        // Transform next_race prediction to match expected format
         const nextRace = result.next_race;
+        const raceHistory = result.race_history || [];
+
+        // If no next race, show the most recent race with "waiting for next race" message
         if (!nextRace) {
-            throw new Error('No next race prediction available');
+            // Get most recent race from history
+            const mostRecentRace = raceHistory && raceHistory.length > 0 
+                ? raceHistory[0] 
+                : null;
+
+            return {
+                isSeasonEnded: true,
+                mostRecentRace: mostRecentRace,
+                winner_prediction: {
+                    driver: 'TBD',
+                    team: 'Unknown',
+                    percentage: 0,
+                    confidence: 'N/A'
+                },
+                top3_prediction: [],
+                full_predictions: [],
+                race_history: raceHistory,
+                message: 'Waiting for next race in 2026 season...'
+            };
         }
 
+        // Normal case: next race exists
         return {
+            isSeasonEnded: false,
             winner_prediction: {
                 driver: nextRace.predicted_winner,
                 team: nextRace.team || 'Unknown',
@@ -134,7 +156,7 @@ export async function fetchSaoPauloPredictions() {
             },
             top3_prediction: nextRace.predicted_top3 || [],
             full_predictions: nextRace.full_predictions || [],
-            race_history: result.race_history || []
+            race_history: raceHistory
         };
     } catch (error) {
         console.error('Error fetching predictions:', error);

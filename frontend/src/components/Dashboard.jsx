@@ -21,6 +21,8 @@ export default function Dashboard() {
   const [error, setError] = useState(null)
   const [nextRace, setNextRace] = useState(null)
   const [openF1Drivers, setOpenF1Drivers] = useState([])
+  const [isSeasonEnded, setIsSeasonEnded] = useState(false)
+  const [mostRecentRace, setMostRecentRace] = useState(null)
 
   const [constructorStandings, setConstructorStandings] = useState([])
   const [raceHistory, setRaceHistory] = useState([])
@@ -73,19 +75,28 @@ export default function Dashboard() {
         try {
           const predictions = await fetchSaoPauloPredictions()
 
-          // Transform predictions to driver data
-          const drivers = transformPredictionsToDriverData(predictions)
-          setDriverData(drivers)
+          // Check if season has ended
+          if (predictions.isSeasonEnded) {
+            setIsSeasonEnded(true)
+            setMostRecentRace(predictions.mostRecentRace)
+            setRaceHistory(predictions.race_history)
+            setError(null)
+            console.log('✓ Season ended, showing most recent race')
+          } else {
+            // Transform predictions to driver data
+            const drivers = transformPredictionsToDriverData(predictions)
+            setDriverData(drivers)
 
-          // Set winner prediction
-          setWinnerPrediction({
-            driver: predictions.winner_prediction.driver,
-            team: predictions.winner_prediction.team,
-            percentage: predictions.winner_prediction.percentage
-          })
+            // Set winner prediction
+            setWinnerPrediction({
+              driver: predictions.winner_prediction.driver,
+              team: predictions.winner_prediction.team,
+              percentage: predictions.winner_prediction.percentage
+            })
 
-          setError(null)
-          console.log('✓ All predictions loaded from backend')
+            setError(null)
+            console.log('✓ All predictions loaded from backend')
+          }
         } catch (err) {
           console.error('❌ Failed to load predictions:', err)
           setError('Failed to load predictions from API. Please ensure the backend is running.')
@@ -147,8 +158,85 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Season Ended State */}
+      {!loading && isSeasonEnded && activeTab === 'current' && (
+        <div style={{
+          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          border: '1px solid rgba(59, 130, 246, 0.3)',
+          borderRadius: '10px',
+          padding: '40px',
+          textAlign: 'center',
+          maxWidth: '700px',
+          margin: '0 auto'
+        }}>
+          <div style={{
+            fontSize: '32px',
+            marginBottom: '16px'
+          }}>🏁</div>
+          <div style={{
+            fontSize: '24px',
+            fontWeight: '700',
+            color: '#3b82f6',
+            marginBottom: '12px'
+          }}>
+            2025 Season Complete!
+          </div>
+          <div style={{
+            fontSize: '14px',
+            color: '#cbd5e1',
+            marginBottom: '24px'
+          }}>
+            The 2025 F1 season has concluded. Predictions will resume when the 2026 season begins.
+          </div>
+          {mostRecentRace && (
+            <div style={{
+              backgroundColor: 'rgba(30, 41, 59, 0.8)',
+              borderRadius: '8px',
+              padding: '20px',
+              marginBottom: '20px',
+              textAlign: 'left'
+            }}>
+              <div style={{
+                fontSize: '12px',
+                color: '#94a3b8',
+                marginBottom: '8px'
+              }}>Most Recent Race</div>
+              <div style={{
+                fontSize: '18px',
+                fontWeight: '700',
+                color: '#e2e8f0',
+                marginBottom: '8px'
+              }}>
+                {mostRecentRace.race_name || 'Abu Dhabi Grand Prix'}
+              </div>
+              <div style={{
+                fontSize: '13px',
+                color: '#cbd5e1'
+              }}>
+                Winner: {mostRecentRace.actual_winner || 'N/A'}
+              </div>
+            </div>
+          )}
+          <button
+            onClick={() => setActiveTab('history')}
+            style={{
+              backgroundColor: '#3b82f6',
+              color: '#ffffff',
+              border: 'none',
+              padding: '10px 24px',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '600'
+            }}
+          >
+            View Season Statistics
+          </button>
+        </div>
+      )}
+
       {/* Current Race Tab Content */}
-      {!loading && activeTab === 'current' && (
+      {!loading && activeTab === 'current' && !isSeasonEnded && (
         driverData.length === 0 && error ? (
           <div style={{
             backgroundColor: 'rgba(239, 68, 68, 0.1)',
