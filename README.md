@@ -6,16 +6,20 @@ Full-stack F1 race prediction application using XGBoost ML models and React fron
 
 ## 🏗️ Architecture
 
+Professional, scalable 3-tier architecture:
+
 ```
 f1_hackathon/
-├── backend/                    # Python Flask API
-│   ├── api.py                 # Main API server
-│   ├── config.py              # Configuration management
-│   ├── mlflow_manager.py      # MLflow tracking
+├── backend/                    # Python Flask API (see BACKEND_STRUCTURE.md)
+│   ├── app/                   # Main application (Flask server)
+│   ├── database/              # Supabase database layer
+│   ├── services/              # Business logic & ML services
+│   ├── utils/                 # Configuration & helpers
+│   ├── scripts/               # Administrative scripts
+│   ├── tests/                 # Unit tests & notebooks
 │   ├── models_spencer/        # Trained ML models
-│   ├── .env                   # Environment config (not in git)
-│   ├── .env.example           # Config template
-│   ├── Procfile               # Production server config
+│   ├── data/                  # Training data
+│   ├── .env                   # Environment variables (not in git)
 │   └── requirements.txt       # Python dependencies
 │
 ├── frontend/                   # React + Vite + Tailwind
@@ -23,10 +27,12 @@ f1_hackathon/
 │   │   ├── api.js             # API client
 │   │   └── components/        # React components
 │   ├── .env                   # Frontend config
-│   ├── .env.example           # Config template
 │   └── vercel.json            # Vercel deployment config
 │
-├── render.yaml                 # One-click Render deployment
+├── testing/                    # Integration & E2E tests
+├── docs/                       # Documentation
+├── render.yaml                 # Render deployment config
+├── BACKEND_STRUCTURE.md        # Detailed backend organization
 └── start.ps1                   # Local development launcher
 ```
 

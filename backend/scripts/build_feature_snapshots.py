@@ -32,9 +32,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Add backend to path
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config import config
+from utils.config import config
 
 
 def load_historical_data() -> pd.DataFrame:

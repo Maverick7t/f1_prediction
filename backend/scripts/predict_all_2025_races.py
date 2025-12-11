@@ -4,16 +4,20 @@ Predict all 2025 F1 races and store in database
 Fetches qualifying data from cache and generates predictions for all races
 """
 import os
+import sys
 import json
 import pandas as pd
 from datetime import datetime
 from dotenv import load_dotenv
 
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 load_dotenv()
 
-from config import config
-from database_v2 import get_prediction_logger, get_qualifying_cache
-from api import infer_from_qualifying, get_races_with_predictions_and_history
+from utils.config import config
+from database.database_v2 import get_prediction_logger, get_qualifying_cache
+from app.api import infer_from_qualifying, get_races_with_predictions_and_history
 import logging
 
 logging.basicConfig(level=logging.INFO)

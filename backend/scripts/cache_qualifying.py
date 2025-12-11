@@ -32,8 +32,8 @@ import fastf1
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config import config
-from database_v2 import get_qualifying_cache
+from utils.config import config
+from database.database_v2 import get_qualifying_cache
 
 # Configure logging
 logging.basicConfig(

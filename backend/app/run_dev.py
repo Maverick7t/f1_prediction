@@ -9,8 +9,9 @@ import sys
 import os
 
 def main():
-    # Change to the script's directory
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    # Change to the backend directory
+    backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    os.chdir(backend_dir)
     
     # Check if virtual environment exists
     venv_python = os.path.join("f1env", "Scripts", "python.exe") if sys.platform == "win32" else os.path.join("f1env", "bin", "python")
@@ -25,7 +26,7 @@ def main():
     print("=" * 50)
     
     # Run the API
-    subprocess.run([venv_python, "api.py"])
+    subprocess.run([venv_python, "-m", "app.api"])
 
 if __name__ == "__main__":
     main()

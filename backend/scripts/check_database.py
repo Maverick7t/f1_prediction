@@ -1,14 +1,18 @@
 #!/usr/bin/env python
 """Check if Supabase database has necessary data"""
 import os
+import sys
 import json
 from dotenv import load_dotenv
 from pathlib import Path
 
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 load_dotenv()
 
-from config import config
-from database_v2 import get_qualifying_cache, get_prediction_logger
+from utils.config import config
+from database.database_v2 import get_qualifying_cache, get_prediction_logger
 
 print("=" * 80)
 print("DATABASE DATA AVAILABILITY CHECK")
@@ -108,7 +112,7 @@ except Exception as e:
 print("\n[5] FEATURE STORE SNAPSHOTS")
 print("-" * 80)
 try:
-    from feature_store import get_feature_store
+    from services.feature_store import get_feature_store
     
     fs = get_feature_store(config)
     health = fs.health_check()

@@ -46,8 +46,12 @@ print("FEATURE STORE CHECK")
 print("=" * 70)
 
 try:
-    from feature_store import get_feature_store
-    from config import config
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    
+    from services.feature_store import get_feature_store
+    from utils.config import config
     
     fs = get_feature_store(config)
     drivers = fs.get_all_drivers()
@@ -103,7 +107,7 @@ print("SUPABASE CHECK")
 print("=" * 70)
 
 try:
-    from database_v2 import get_prediction_logger
+    from database.database_v2 import get_prediction_logger
     logger = get_prediction_logger(config)
     print(f'✓ Prediction logger initialized')
     print(f'  - Mode: {logger.mode}')

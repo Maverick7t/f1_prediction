@@ -13,8 +13,9 @@ load_dotenv()
 # =============================================================================
 # BASE PATHS
 # =============================================================================
-# Get the directory where this config file lives
-BASE_DIR = Path(__file__).resolve().parent
+# Get the directory where this config file lives (utils/)
+# Go up to backend/ parent directory
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 def get_path(env_var: str, default: str) -> Path:

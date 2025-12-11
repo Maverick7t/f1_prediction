@@ -24,9 +24,9 @@ from datetime import datetime
 import json
 
 # Import configuration
-from config import config, ensure_directories, print_config
+from utils.config import config, ensure_directories, print_config
 
-from mlflow_manager import (
+from services.mlflow_manager import (
     register_model, 
     log_prediction, 
     get_model_registry,
@@ -34,16 +34,16 @@ from mlflow_manager import (
 )
 
 # Import new feature store for efficient feature retrieval
-from feature_store import get_feature_store, FeatureStore
+from services.feature_store import get_feature_store, FeatureStore
 
 # Import Supabase prediction logger for accuracy tracking
-from database_v2 import get_prediction_logger, PredictionLogger, get_qualifying_cache
+from database.database_v2 import get_prediction_logger, PredictionLogger, get_qualifying_cache
 
 # Import file-based caching for expensive queries
-from file_cache import get_file_cache, CACHE_KEYS, CACHE_TTL
+from utils.file_cache import get_file_cache, CACHE_KEYS, CACHE_TTL
 
 # Import background scheduler for auto-caching qualifying data
-from scheduler import start_scheduler, stop_scheduler
+from services.scheduler import start_scheduler, stop_scheduler
 
 # Initialize Flask app
 app = Flask(__name__)

@@ -19,9 +19,9 @@ from pathlib import Path
 from collections import defaultdict
 
 # Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config import config
+from utils.config import config
 from dotenv import load_dotenv
 
 load_dotenv()

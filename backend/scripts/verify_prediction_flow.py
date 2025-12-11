@@ -8,12 +8,18 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
+import sys
 import pandas as pd
 import numpy as np
 import json
 import joblib
 from datetime import datetime
-from config import config
+from pathlib import Path
+
+# Add parent directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from utils.config import config
 
 # ============================================================================
 # VERIFICATION 1: Check all required data sources
@@ -63,7 +69,7 @@ print("VERIFICATION 2: Feature Computation")
 print("="*80)
 
 try:
-    from api import compute_basic_features
+    from app.api import compute_basic_features
     print("[OK] compute_basic_features function found in api.py")
 except ImportError:
     print("[ERROR] compute_basic_features NOT FOUND in api.py")
@@ -88,7 +94,7 @@ print(f"\nSample qualifying data ({len(sample_qual)} drivers):")
 print(sample_qual.to_string(index=False))
 
 # Test the prediction function
-from api import infer_from_qualifying
+from app.api import infer_from_qualifying
 
 try:
     predictions = infer_from_qualifying(
