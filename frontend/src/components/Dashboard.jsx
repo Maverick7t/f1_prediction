@@ -21,8 +21,6 @@ export default function Dashboard() {
   const [error, setError] = useState(null)
   const [nextRace, setNextRace] = useState(null)
   const [openF1Drivers, setOpenF1Drivers] = useState([])
-  const [isSeasonEnded, setIsSeasonEnded] = useState(false)
-  const [mostRecentRace, setMostRecentRace] = useState(null)
 
   const [constructorStandings, setConstructorStandings] = useState([])
   const [raceHistory, setRaceHistory] = useState([])
@@ -75,19 +73,11 @@ export default function Dashboard() {
         try {
           const predictions = await fetchSaoPauloPredictions()
 
-          // Check if season has ended
-          if (predictions.isSeasonEnded) {
-            setIsSeasonEnded(true)
-            setMostRecentRace(predictions.mostRecentRace)
-            setRaceHistory(predictions.race_history)
-            setError(null)
-            console.log('✓ Season ended, showing most recent race')
-          } else {
-            // Transform predictions to driver data
-            const drivers = transformPredictionsToDriverData(predictions)
-            setDriverData(drivers)
+          // Transform predictions to driver data
+          const drivers = transformPredictionsToDriverData(predictions)
+          setDriverData(drivers)
 
-            // Set winner prediction
+          // Set winner prediction
             setWinnerPrediction({
               driver: predictions.winner_prediction.driver,
               team: predictions.winner_prediction.team,
@@ -96,7 +86,6 @@ export default function Dashboard() {
 
             setError(null)
             console.log('✓ All predictions loaded from backend')
-          }
         } catch (err) {
           console.error('❌ Failed to load predictions:', err)
           setError('Failed to load predictions from API. Please ensure the backend is running.')
@@ -158,198 +147,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Season Ended State */}
-      {!loading && isSeasonEnded && activeTab === 'current' && (
-        <div style={{
-          backgroundColor: 'rgba(59, 130, 246, 0.1)',
-          border: '1px solid rgba(59, 130, 246, 0.3)',
-          borderRadius: '10px',
-          padding: '40px',
-          textAlign: 'center',
-          maxWidth: '900px',
-          margin: '0 auto'
-        }}>
-          <div style={{
-            fontSize: '32px',
-            marginBottom: '16px'
-          }}>🏁</div>
-          <div style={{
-            fontSize: '24px',
-            fontWeight: '700',
-            color: '#3b82f6',
-            marginBottom: '24px'
-          }}>
-            2025 Season Complete!
-          </div>
-
-          {/* Model Performance Stats */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: '20px',
-            marginBottom: '30px'
-          }}>
-            {/* Total Races */}
-            <div style={{
-              backgroundColor: 'rgba(30, 41, 59, 0.8)',
-              borderRadius: '8px',
-              padding: '20px',
-              border: '1px solid rgba(59, 130, 246, 0.2)'
-            }}>
-              <div style={{
-                fontSize: '12px',
-                color: '#94a3b8',
-                marginBottom: '8px'
-              }}>Total Races</div>
-              <div style={{
-                fontSize: '28px',
-                fontWeight: '700',
-                color: '#3b82f6'
-              }}>
-                {raceHistory.length}
-              </div>
-            </div>
-
-            {/* Correct Predictions */}
-            <div style={{
-              backgroundColor: 'rgba(30, 41, 59, 0.8)',
-              borderRadius: '8px',
-              padding: '20px',
-              border: '1px solid rgba(34, 197, 94, 0.2)'
-            }}>
-              <div style={{
-                fontSize: '12px',
-                color: '#94a3b8',
-                marginBottom: '8px'
-              }}>Correct Predictions</div>
-              <div style={{
-                fontSize: '28px',
-                fontWeight: '700',
-                color: '#22c55e'
-              }}>
-                {raceHistory.filter(r => r.correct).length}
-              </div>
-            </div>
-
-            {/* Model Accuracy */}
-            <div style={{
-              backgroundColor: 'rgba(30, 41, 59, 0.8)',
-              borderRadius: '8px',
-              padding: '20px',
-              border: '1px solid rgba(250, 204, 21, 0.2)'
-            }}>
-              <div style={{
-                fontSize: '12px',
-                color: '#94a3b8',
-                marginBottom: '8px'
-              }}>Win Prediction Accuracy</div>
-              <div style={{
-                fontSize: '28px',
-                fontWeight: '700',
-                color: '#facc15'
-              }}>
-                {raceHistory.length > 0
-                  ? Math.round((raceHistory.filter(r => r.correct).length / raceHistory.length) * 100)
-                  : 0}%
-              </div>
-            </div>
-          </div>
-
-          {/* Recent Race Results */}
-          {raceHistory.length > 0 && (
-            <div style={{
-              marginBottom: '30px'
-            }}>
-              <div style={{
-                fontSize: '14px',
-                fontWeight: '700',
-                color: '#e2e8f0',
-                marginBottom: '16px',
-                textAlign: 'left'
-              }}>
-                Recent Race Results
-              </div>
-              <div style={{
-                display: 'grid',
-                gap: '8px',
-                maxHeight: '300px',
-                overflowY: 'auto'
-              }}>
-                {raceHistory.slice(0, 5).map((race, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      backgroundColor: 'rgba(30, 41, 59, 0.8)',
-                      borderRadius: '6px',
-                      padding: '12px',
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 1fr 0.5fr',
-                      gap: '12px',
-                      alignItems: 'center',
-                      textAlign: 'left',
-                      borderLeft: `4px solid ${race.correct ? '#22c55e' : '#ef4444'}`
-                    }}
-                  >
-                    <div>
-                      <div style={{
-                        fontSize: '12px',
-                        color: '#94a3b8'
-                      }}>
-                        {race.race_name || `Race ${idx + 1}`}
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{
-                        fontSize: '11px',
-                        color: '#cbd5e1',
-                        marginBottom: '4px'
-                      }}>
-                        <span style={{ color: '#fbbf24' }}>Predicted:</span> {race.predicted_winner || 'N/A'}
-                      </div>
-                      <div style={{
-                        fontSize: '11px',
-                        color: '#cbd5e1'
-                      }}>
-                        <span style={{ color: '#10b981' }}>Actual:</span> {race.actual_winner || 'N/A'}
-                      </div>
-                    </div>
-                    <div style={{
-                      fontSize: '12px',
-                      fontWeight: '700',
-                      color: race.correct ? '#22c55e' : '#ef4444',
-                      textAlign: 'center'
-                    }}>
-                      {race.correct ? '✓' : '✗'}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <button
-            onClick={() => setActiveTab('history')}
-            style={{
-              backgroundColor: '#3b82f6',
-              color: '#ffffff',
-              border: 'none',
-              padding: '10px 24px',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: '600',
-              transition: 'background-color 0.2s'
-            }}
-            onMouseEnter={(e) => e.target.style.backgroundColor = '#2563eb'}
-            onMouseLeave={(e) => e.target.style.backgroundColor = '#3b82f6'}
-          >
-            View Full Season Statistics
-          </button>
-        </div>
-      )}
-
       {/* Current Race Tab Content */}
-      {!loading && activeTab === 'current' && !isSeasonEnded && (
+      {!loading && activeTab === 'current' && (
         driverData.length === 0 && error ? (
           <div style={{
             backgroundColor: 'rgba(239, 68, 68, 0.1)',
