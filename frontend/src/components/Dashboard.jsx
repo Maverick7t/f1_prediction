@@ -78,14 +78,14 @@ export default function Dashboard() {
           setDriverData(drivers)
 
           // Set winner prediction
-            setWinnerPrediction({
-              driver: predictions.winner_prediction.driver,
-              team: predictions.winner_prediction.team,
-              percentage: predictions.winner_prediction.percentage
-            })
+          setWinnerPrediction({
+            driver: predictions.winner_prediction.driver,
+            team: predictions.winner_prediction.team,
+            percentage: predictions.winner_prediction.percentage
+          })
 
-            setError(null)
-            console.log('✓ All predictions loaded from backend')
+          setError(null)
+          console.log('✓ All predictions loaded from backend')
         } catch (err) {
           console.error('❌ Failed to load predictions:', err)
           setError('Failed to load predictions from API. Please ensure the backend is running.')
