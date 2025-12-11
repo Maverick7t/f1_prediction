@@ -6,6 +6,7 @@ services:
   - type: web
     name: f1-prediction-api
     env: python
+    runtime: python-3.11.10
     region: oregon
     plan: free
     branch: main
@@ -18,8 +19,6 @@ services:
         value: production
       - key: FLASK_DEBUG
         value: "false"
-      - key: PYTHON_VERSION
-        value: "3.11.0"
       - key: SECRET_KEY
         generateValue: true
       - key: DATA_PATH
