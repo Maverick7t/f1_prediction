@@ -11,7 +11,7 @@ waitress==3.0.0
 # Data Processing
 pandas==2.2.3
 numpy==1.26.4
-pyarrow==16.1.0
+pyarrow==15.0.2
 
 # Machine Learning
 scikit-learn==1.5.2
