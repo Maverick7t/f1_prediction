@@ -20,11 +20,8 @@ joblib==1.4.2
 # HTTP & APIs
 requests==2.32.3
 
-# MLOps
-mlflow==2.9.1
-
-# PyArrow with Python 3.13 wheels (must be <15 for mlflow 2.9.1)
-pyarrow==14.0.1
+# MLOps (upgraded to support modern pyarrow with Python 3.13 wheels)
+mlflow==2.15.1
 
 # Configuration
 python-dotenv==1.0.1
