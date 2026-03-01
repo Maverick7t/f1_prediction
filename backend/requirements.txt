@@ -23,8 +23,8 @@ requests==2.32.3
 # MLOps
 mlflow==2.9.1
 
-# PyArrow with Python 3.13 wheel support (overrides mlflow constraint)
-pyarrow>=18.0.0
+# PyArrow with Python 3.13 wheels (must be <15 for mlflow 2.9.1)
+pyarrow==14.0.1
 
 # Configuration
 python-dotenv==1.0.1
