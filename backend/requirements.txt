@@ -26,7 +26,7 @@ requests==2.32.3
 
 # MLOps
 mlflow==2.9.1
-pyarrow==14.0.1  # Pinned version with Python 3.12 wheel support
+pyarrow>=15.0.0  # Version with Python 3.13 wheel support
 
 # Configuration
 python-dotenv==1.0.1
