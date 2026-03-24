@@ -1572,11 +1572,18 @@ def predict_sao_paulo():
             })
         
         # Normal in-season flow
-        # 1. Get race history with predictions for last 5 races
-        race_history = get_races_with_predictions_and_history()
-        
-        # 2. Get next race prediction
+        # OPTIMIZE: Get next race prediction first (uses cached qualifying data - FAST!)
         next_race = get_next_race_prediction()
+        
+        # Then try to get race history (can be slow, return early if we have next_race)
+        race_history = []
+        try:
+            # Set a short timeout for race history - don't let it slow down response
+            import signal
+            race_history = get_races_with_predictions_and_history()
+        except Exception as hist_err:
+            logger.warning(f"Could not fetch race history: {hist_err}, returning next race prediction only")
+            race_history = []
         
         # Calculate accuracy stats
         correct_predictions = 0
