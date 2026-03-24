@@ -218,6 +218,7 @@ class QualifyingCache:
     """
     Cache qualifying results to avoid FastF1 API rate limits.
     Uses Supabase in production, Redis/local in development.
+    Falls back to file cache if Supabase unavailable.
     """
     
     def __init__(self, config):
@@ -227,6 +228,7 @@ class QualifyingCache:
         self._mode = "local"
         
         self._initialize()
+        self._load_file_cache()  # Load from f1_cache directory
     
     def _initialize(self):
         """Initialize cache backend"""
@@ -241,6 +243,35 @@ class QualifyingCache:
             except Exception as e:
                 logger.warning(f"Supabase connection failed: {e}")
                 self._mode = "local"
+    
+    def _load_file_cache(self):
+        """Load qualifying data from f1_cache directory into memory"""
+        try:
+            from pathlib import Path
+            cache_dir = Path(__file__).parent.parent / 'f1_cache'
+            
+            if not cache_dir.exists():
+                return
+            
+            # Load all qualifying JSON files
+            for year_dir in cache_dir.iterdir():
+                if year_dir.is_dir():
+                    for json_file in year_dir.glob('*_qualifying.json'):
+                        try:
+                            race_key = json_file.stem.rsplit('_qualifying', 1)[0]
+                            with open(json_file, 'r') as f:
+                                import json
+                                qual_data = json.load(f)
+                                expires_at = datetime.now() + timedelta(hours=24)
+                                self._local_cache[race_key] = {
+                                    'data': qual_data,
+                                    'expires_at': expires_at
+                                }
+                                logger.debug(f"✓ Loaded {race_key} from file cache")
+                        except Exception as e:
+                            logger.debug(f"Could not load {json_file}: {e}")
+        except Exception as e:
+            logger.debug(f"File cache loading failed: {e}")
     
     def cache_qualifying(self, race_key: str, race_year: int, 
                         qualifying_data: list, ttl_hours: int = 24):
