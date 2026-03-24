@@ -140,10 +140,10 @@ class FeatureStore:
         return features
     
     @lru_cache(maxsize=128)
-    def get_driver_recent_form(self, driver_code: str, n_races: int = 10) -> pd.DataFrame:
+    def _get_driver_recent_form_cached(self, driver_code: str, n_races: int = 10) -> pd.DataFrame:
         """
-        Get last N races for ONE driver (not entire dataset).
-        Uses Parquet predicate pushdown for efficient filtered reads.
+        Internal cached version - callers should use get_driver_recent_form()
+        which returns a copy to prevent cache corruption.
         """
         # Try Redis first
         if self.redis_client:
@@ -177,6 +177,13 @@ class FeatureStore:
         
         # Fallback to CSV (slow)
         return self._get_driver_form_from_csv(driver_code, n_races)
+    
+    def get_driver_recent_form(self, driver_code: str, n_races: int = 10) -> pd.DataFrame:
+        """
+        Get last N races for ONE driver (not entire dataset).
+        Returns a copy to prevent mutation of cached data.
+        """
+        return self._get_driver_recent_form_cached(driver_code, n_races).copy()
     
     def _compute_driver_features_from_parquet(self, driver_code: str) -> Dict[str, Any]:
         """Compute features from Parquet file (fallback path)"""
@@ -420,7 +427,7 @@ class FeatureStore:
             "features_snapshot_exists": self.features_snapshot_path.exists(),
             "redis_connected": self.redis_client is not None,
             "drivers_in_memory": len(self._driver_features_cache) if self._driver_features_cache is not None else 0,
-            "lru_cache_info": self.get_driver_recent_form.cache_info()._asdict()
+            "lru_cache_info": self._get_driver_recent_form_cached.cache_info()._asdict()
         }
 
 

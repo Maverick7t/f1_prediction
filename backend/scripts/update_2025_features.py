@@ -30,7 +30,7 @@ load_dotenv()
 # CONSTANTS
 # =============================================================================
 ERGAST_BASE = "https://ergast.com/api/f1"
-DEFAULT_YEAR = 2025
+DEFAULT_YEAR = datetime.now().year
 
 # Elo constants
 ELO_K_FACTOR = 32

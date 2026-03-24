@@ -231,8 +231,8 @@ class DatabaseManager:
                 "trend": []
             }
         
-        # Convert correct column to boolean
-        df['correct'] = df['correct'].astype(bool)
+        # Convert correct column to boolean, treating NaN as False
+        df['correct'] = df['correct'].fillna(False).astype(bool)
         
         total = len(df)
         correct = df['correct'].sum()
@@ -323,7 +323,7 @@ def get_database(config=None) -> DatabaseManager:
     
     if _db_instance is None:
         if config is None:
-            from config import config as app_config
+            from utils.config import config as app_config
             config = app_config
         _db_instance = DatabaseManager(config)
     

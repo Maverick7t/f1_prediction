@@ -44,9 +44,9 @@ export default function StandingsView() {
             padding: '18px'
         }}>
             <div style={{
-                fontSize: '11px',
+                fontSize: '13px',
                 fontWeight: '700',
-                letterSpacing: '1px',
+                letterSpacing: '0.5px',
                 color: '#888888',
                 textTransform: 'uppercase',
                 marginBottom: '16px'
@@ -70,7 +70,7 @@ export default function StandingsView() {
                     padding: '12px',
                     backgroundColor: 'rgba(80, 80, 80, 0.3)',
                     borderBottom: '1px solid #3a3a3a',
-                    fontSize: '10px',
+                    fontSize: '11px',
                     fontWeight: '700',
                     color: '#888888',
                     textTransform: 'uppercase',
@@ -114,7 +114,7 @@ export default function StandingsView() {
                                 }}
                             >
                                 <div style={{
-                                    fontSize: '13px',
+                                    fontSize: '15px',
                                     fontWeight: '800',
                                     color: driver.position === 1 ? '#fbbf24' : '#cbd5e1'
                                 }}>
@@ -122,7 +122,7 @@ export default function StandingsView() {
                                 </div>
                                 <div>
                                     <div style={{
-                                        fontSize: '11px',
+                                        fontSize: '14px',
                                         fontWeight: '700',
                                         color: '#e2e8f0',
                                         marginBottom: '2px'
@@ -130,14 +130,14 @@ export default function StandingsView() {
                                         {driver.driverName}
                                     </div>
                                     <div style={{
-                                        fontSize: '9px',
+                                        fontSize: '12px',
                                         color: '#888888'
                                     }}>
                                         {driver.teamName}
                                     </div>
                                 </div>
                                 <div style={{
-                                    fontSize: '12px',
+                                    fontSize: '14px',
                                     fontWeight: '700',
                                     color: '#00d4ff'
                                 }}>
@@ -149,14 +149,14 @@ export default function StandingsView() {
                                     gap: '6px'
                                 }}>
                                     <div style={{
-                                        fontSize: '12px',
+                                        fontSize: '14px',
                                         fontWeight: '700',
                                         color: '#ea580c'
                                     }}>
                                         {driver.predictedPoints}
                                     </div>
                                     <div style={{
-                                        fontSize: '9px',
+                                        fontSize: '12px',
                                         color: driver.predictedPoints > driver.points ? '#10b981' : '#888888',
                                         fontWeight: '600'
                                     }}>
@@ -174,7 +174,7 @@ export default function StandingsView() {
                 padding: '12px',
                 backgroundColor: 'rgba(0, 212, 255, 0.1)',
                 borderRadius: '6px',
-                fontSize: '10px',
+                fontSize: '13px',
                 color: '#cbd5e1',
                 lineHeight: '1.6'
             }}>

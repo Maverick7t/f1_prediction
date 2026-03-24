@@ -78,15 +78,15 @@ export default function DriverCard({
                 <div style={{ flex: 1 }}>
                     <div style={{
                         color: '#e2e8f0',
-                        fontSize: '13px',
+                        fontSize: '14px',
                         fontWeight: '700',
-                        letterSpacing: '0.5px'
+                        letterSpacing: '0.3px'
                     }}>
                         {fullName || name}
                     </div>
                     <div style={{
                         color: '#888888',
-                        fontSize: '10px',
+                        fontSize: '12px',
                         marginTop: '2px'
                     }}>
                         {team}
@@ -94,7 +94,7 @@ export default function DriverCard({
                 </div>
                 {position && (
                     <div style={{
-                        fontSize: '12px',
+                        fontSize: '13px',
                         fontWeight: '800',
                         color: '#00d4ff',
                         backgroundColor: 'rgba(0, 212, 255, 0.1)',
@@ -127,14 +127,14 @@ export default function DriverCard({
                 alignItems: 'center'
             }}>
                 <div style={{
-                    fontSize: '13px',
+                    fontSize: '14px',
                     fontWeight: '700',
                     color: barColor
                 }}>
                     {percentage}%
                 </div>
                 <div style={{
-                    fontSize: '9px',
+                    fontSize: '11px',
                     fontWeight: '600',
                     color: '#888888',
                     letterSpacing: '0.5px'
@@ -148,7 +148,7 @@ export default function DriverCard({
                     marginTop: '8px',
                     paddingTop: '8px',
                     borderTop: '1px solid rgba(80, 80, 80, 0.5)',
-                    fontSize: '10px',
+                    fontSize: '13px',
                     color: '#cbd5e1'
                 }}>
                     {points && <div>Points: <span style={{ color: '#00d4ff', fontWeight: '700' }}>{points}</span></div>}

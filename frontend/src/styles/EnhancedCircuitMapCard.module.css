@@ -19,9 +19,9 @@
 }
 
 .header-title {
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 700;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
     color: #888888;
     text-transform: uppercase;
     display: flex;
@@ -34,7 +34,7 @@
 }
 
 .header-info {
-    font-size: 10px;
+    font-size: 13px;
     color: #cbd5e1;
     font-weight: 600;
 }
@@ -48,7 +48,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 12px;
+    font-size: 13px;
 }
 
 .error-icon {
@@ -127,7 +127,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 12px;
+    font-size: 13px;
 }
 
 .colormap-selector label {
@@ -141,7 +141,7 @@
     border: 1px solid #3a3a3a;
     border-radius: 4px;
     color: #cbd5e1;
-    font-size: 11px;
+    font-size: 13px;
     cursor: pointer;
     transition: all 0.3s ease;
 }
@@ -159,9 +159,9 @@
 }
 
 .selector-label {
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 700;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
     color: #888888;
     text-transform: uppercase;
 }
@@ -183,7 +183,7 @@
     cursor: pointer;
     transition: all 0.3s ease;
     color: #cbd5e1;
-    font-size: 11px;
+    font-size: 13px;
 }
 
 .driver-button:hover {
@@ -204,7 +204,7 @@
     justify-content: center;
     font-weight: bold;
     color: #fff;
-    font-size: 11px;
+    font-size: 12px;
     flex-shrink: 0;
 }
 
@@ -215,16 +215,16 @@
 .driver-btn-code {
     font-weight: 700;
     color: #e2e8f0;
-    font-size: 10px;
+    font-size: 12px;
 }
 
 .driver-btn-name {
-    font-size: 9px;
+    font-size: 11px;
     color: #888888;
 }
 
 .driver-btn-detail {
-    font-size: 8px;
+    font-size: 11px;
     color: #666666;
 }
 
@@ -268,18 +268,18 @@
 }
 
 .driver-name {
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 700;
     color: #cbd5e1;
 }
 
 .driver-team {
-    font-size: 10px;
+    font-size: 12px;
     color: #888888;
 }
 
 .driver-position {
-    font-size: 10px;
+    font-size: 12px;
     color: #00d4ff;
     font-weight: 600;
     margin-top: 2px;
@@ -299,7 +299,7 @@
     border: none;
     border-bottom: 2px solid transparent;
     color: #888888;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.3s ease;
@@ -335,7 +335,7 @@
 }
 
 .stat-label {
-    font-size: 9px;
+    font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.5px;
     color: #888888;
@@ -370,7 +370,7 @@
 }
 
 .sector-label {
-    font-size: 8px;
+    font-size: 11px;
     font-weight: 700;
     color: #888888;
     text-transform: uppercase;
@@ -378,7 +378,7 @@
 }
 
 .sector-time {
-    font-size: 12px;
+    font-size: 14px;
     font-weight: bold;
     color: #cbd5e1;
 }
@@ -403,12 +403,12 @@
 }
 
 .speed-label {
-    font-size: 10px;
+    font-size: 12px;
     color: #888888;
 }
 
 .speed-value {
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 700;
     color: #00d4ff;
 }
@@ -433,14 +433,14 @@
 
 .accel-label,
 .brake-label {
-    font-size: 10px;
+    font-size: 12px;
     color: #888888;
     font-weight: 600;
 }
 
 .accel-value,
 .brake-value {
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 700;
     color: #fbbf24;
 }
@@ -461,12 +461,12 @@
     padding: 6px 8px;
     background-color: rgba(0, 212, 255, 0.05);
     border-radius: 3px;
-    font-size: 10px;
+    font-size: 12px;
     color: #cbd5e1;
 }
 
 .channel-icon {
-    font-size: 10px;
+    font-size: 12px;
 }
 
 .channel-name {
@@ -484,7 +484,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 10px;
+    font-size: 12px;
     color: #cbd5e1;
 }
 
@@ -496,12 +496,12 @@
     padding: 2px 6px;
     font-weight: 600;
     white-space: nowrap;
-    font-size: 8px;
+    font-size: 11px;
 }
 
 /* Info Text */
 .info-text {
-    font-size: 10px;
+    font-size: 12px;
     color: #888888;
     line-height: 1.4;
     padding: 8px;

@@ -74,9 +74,9 @@ export default function LiveUpdatesCard({ liveUpdates }) {
                 marginBottom: '12px'
             }}>
                 <div style={{
-                    fontSize: '11px',
+                    fontSize: '13px',
                     fontWeight: '700',
-                    letterSpacing: '1px',
+                    letterSpacing: '0.5px',
                     color: '#888888',
                     textTransform: 'uppercase',
                     flex: 1
@@ -88,7 +88,7 @@ export default function LiveUpdatesCard({ liveUpdates }) {
                     alignItems: 'center',
                     gap: '6px',
                     color: '#ef4444',
-                    fontSize: '10px',
+                    fontSize: '12px',
                     fontWeight: '700',
                     letterSpacing: '1px'
                 }}>
@@ -130,7 +130,7 @@ export default function LiveUpdatesCard({ liveUpdates }) {
                                 backgroundColor: idx === animatingIndex ? 'rgba(0, 212, 255, 0.15)' : 'rgba(80, 80, 80, 0.3)',
                                 border: `1px solid ${idx === animatingIndex ? 'rgba(0, 212, 255, 0.4)' : 'rgba(80, 80, 80, 0.4)'}`,
                                 borderRadius: '6px',
-                                fontSize: '11px',
+                                fontSize: '13px',
                                 color: idx === animatingIndex ? '#cbd5e1' : '#888888',
                                 lineHeight: '1.5',
                                 transition: 'all 0.3s ease',

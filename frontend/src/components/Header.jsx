@@ -15,33 +15,30 @@ export default function Header({ activeTab, setActiveTab }) {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            marginBottom: '32px',
+            flexWrap: 'wrap',
+            gap: '16px',
+            marginBottom: '28px',
             borderBottom: '1px solid #3a3a3a',
-            paddingBottom: '20px',
             backgroundColor: 'rgba(0, 0, 0, 0.4)',
-            padding: '20px',
-            marginLeft: '-20px',
-            marginRight: '-20px',
-            paddingLeft: '20px',
-            paddingRight: '20px',
+            padding: '16px 24px',
             borderRadius: '8px'
         }}>
             <div style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '40px'
+                gap: '32px',
+                flexWrap: 'wrap'
             }}>
-                {/* Logo with checkered flag pattern */}
+                {/* Logo */}
                 <div style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px',
                     cursor: 'pointer',
-                    transition: 'transform 0.3s ease',
-                    hover: { transform: 'scale(1.05)' }
+                    transition: 'transform 0.3s ease'
                 }}>
                     <div style={{
-                        fontSize: '28px',
+                        fontSize: '24px',
                         fontWeight: '800',
                         letterSpacing: '2px',
                         color: '#fff',
@@ -57,7 +54,8 @@ export default function Header({ activeTab, setActiveTab }) {
                 {/* Navigation */}
                 <nav style={{
                     display: 'flex',
-                    gap: '24px'
+                    gap: '8px',
+                    flexWrap: 'wrap'
                 }}>
                     {tabs.map(tab => (
                         <button
@@ -67,16 +65,21 @@ export default function Header({ activeTab, setActiveTab }) {
                                 background: 'none',
                                 border: 'none',
                                 color: activeTab === tab.id ? '#00d4ff' : '#888888',
-                                fontSize: '11px',
+                                fontSize: '13px',
                                 fontWeight: '700',
-                                letterSpacing: '1px',
+                                letterSpacing: '0.5px',
                                 cursor: 'pointer',
-                                paddingBottom: activeTab === tab.id ? '6px' : '0',
-                                borderBottom: activeTab === tab.id ? '2px solid #00d4ff' : 'none',
-                                transition: 'all 0.3s ease'
+                                padding: '6px 10px',
+                                borderBottom: activeTab === tab.id ? '2px solid #00d4ff' : '2px solid transparent',
+                                transition: 'all 0.3s ease',
+                                whiteSpace: 'nowrap'
                             }}
-                            onMouseEnter={(e) => !activeTab === tab.id && (e.target.style.color = '#94a3b8')}
-                            onMouseLeave={(e) => !activeTab === tab.id && (e.target.style.color = '#64748b')}
+                            onMouseEnter={(e) => {
+                                if (activeTab !== tab.id) e.target.style.color = '#cbd5e1'
+                            }}
+                            onMouseLeave={(e) => {
+                                if (activeTab !== tab.id) e.target.style.color = '#888888'
+                            }}
                         >
                             {tab.label}
                         </button>
@@ -86,7 +89,7 @@ export default function Header({ activeTab, setActiveTab }) {
 
             <div style={{
                 color: '#888888',
-                fontSize: '11px',
+                fontSize: '13px',
                 fontWeight: '600',
                 display: 'flex',
                 alignItems: 'center',

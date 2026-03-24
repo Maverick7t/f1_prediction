@@ -58,16 +58,16 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
                 marginBottom: '16px'
             }}>
                 <div style={{
-                    fontSize: '11px',
+                    fontSize: '13px',
                     fontWeight: '700',
-                    letterSpacing: '1px',
+                    letterSpacing: '0.5px',
                     color: '#888888',
                     textTransform: 'uppercase'
                 }}>
                     RACE HISTORY (LAST 5)
                 </div>
                 <div style={{
-                    fontSize: '12px',
+                    fontSize: '14px',
                     fontWeight: '700',
                     color: '#00d4ff',
                     backgroundColor: 'rgba(0, 212, 255, 0.1)',
@@ -93,7 +93,7 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
                         border: `1px solid ${sortBy === 'date' ? '#00d4ff' : '#3a3a3a'}`,
                         borderRadius: '4px',
                         color: sortBy === 'date' ? '#00d4ff' : '#888888',
-                        fontSize: '9px',
+                        fontSize: '11px',
                         fontWeight: '600',
                         cursor: 'pointer',
                         transition: 'all 0.2s ease'
@@ -119,7 +119,7 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
                         border: `1px solid ${sortBy === 'result' ? '#22c55e' : '#3a3a3a'}`,
                         borderRadius: '4px',
                         color: sortBy === 'result' ? '#22c55e' : '#888888',
-                        fontSize: '9px',
+                        fontSize: '11px',
                         fontWeight: '600',
                         cursor: 'pointer',
                         transition: 'all 0.2s ease'
@@ -145,7 +145,7 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
                         border: `1px solid ${sortBy === 'accuracy' ? '#ea580c' : '#3a3a3a'}`,
                         borderRadius: '4px',
                         color: sortBy === 'accuracy' ? '#ea580c' : '#888888',
-                        fontSize: '9px',
+                        fontSize: '11px',
                         fontWeight: '600',
                         cursor: 'pointer',
                         transition: 'all 0.2s ease'
@@ -191,7 +191,7 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
                     <table style={{
                         width: '100%',
                         borderCollapse: 'collapse',
-                        fontSize: '10px'
+                        fontSize: '13px'
                     }}>
                         <thead>
                             <tr style={{
@@ -278,7 +278,7 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
                                         padding: '10px 8px',
                                         textAlign: 'center',
                                         color: '#888888',
-                                        fontSize: '9px'
+                                        fontSize: '12px'
                                     }}>
                                         {race.date ? new Date(race.date).toLocaleDateString() : 'N/A'}
                                     </td>
@@ -305,7 +305,7 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
                                         <span style={{
                                             color: getResultColor(race.correct),
                                             fontWeight: '700',
-                                            fontSize: '9px',
+                                            fontSize: '11px',
                                             padding: '4px 8px',
                                             backgroundColor: getResultColor(race.correct) === '#22c55e' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
                                             borderRadius: '3px'

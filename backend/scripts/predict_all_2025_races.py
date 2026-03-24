@@ -1,12 +1,15 @@
 #!/usr/bin/env python
 """
-Predict all 2025 F1 races and store in database
+Predict all F1 races for the current season and store in database
 Fetches qualifying data from cache and generates predictions for all races
+Dynamically fetches the race schedule from FastF1 instead of hardcoding.
 """
 import os
 import sys
 import json
+import traceback
 import pandas as pd
+import fastf1
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -27,55 +30,60 @@ logger = logging.getLogger(__name__)
 prediction_logger = get_prediction_logger(config)
 qualifying_cache = get_qualifying_cache(config)
 
-# Hardcoded 2025 race schedule with proper names
-RACES_2025 = [
-    {"round": 1, "name": "Bahrain Grand Prix", "circuit": "Bahrain", "date": "2025-03-16"},
-    {"round": 2, "name": "Saudi Arabian Grand Prix", "circuit": "Saudi Arabia", "date": "2025-03-30"},
-    {"round": 3, "name": "Australian Grand Prix", "circuit": "Australia", "date": "2025-04-13"},
-    {"round": 4, "name": "Japanese Grand Prix", "circuit": "Japan", "date": "2025-04-27"},
-    {"round": 5, "name": "Chinese Grand Prix", "circuit": "China", "date": "2025-05-11"},
-    {"round": 6, "name": "Monaco Grand Prix", "circuit": "Monaco", "date": "2025-05-25"},
-    {"round": 7, "name": "Canadian Grand Prix", "circuit": "Canada", "date": "2025-06-08"},
-    {"round": 8, "name": "Spanish Grand Prix", "circuit": "Spain", "date": "2025-06-22"},
-    {"round": 9, "name": "Austrian Grand Prix", "circuit": "Austria", "date": "2025-07-06"},
-    {"round": 10, "name": "British Grand Prix", "circuit": "Britain", "date": "2025-07-20"},
-    {"round": 11, "name": "Hungarian Grand Prix", "circuit": "Hungary", "date": "2025-08-03"},
-    {"round": 12, "name": "Belgian Grand Prix", "circuit": "Belgium", "date": "2025-08-24"},
-    {"round": 13, "name": "Dutch Grand Prix", "circuit": "Netherlands", "date": "2025-09-07"},
-    {"round": 14, "name": "Italian Grand Prix", "circuit": "Italy", "date": "2025-09-21"},
-    {"round": 15, "name": "Azerbaijan Grand Prix", "circuit": "Azerbaijan", "date": "2025-10-05"},
-    {"round": 16, "name": "United States Grand Prix", "circuit": "United States", "date": "2025-10-19"},
-    {"round": 17, "name": "Mexico City Grand Prix", "circuit": "Mexico", "date": "2025-10-26"},
-    {"round": 18, "name": "São Paulo Grand Prix", "circuit": "Brazil", "date": "2025-11-09"},
-    {"round": 19, "name": "Las Vegas Grand Prix", "circuit": "Las Vegas", "date": "2025-11-22"},
-    {"round": 20, "name": "Qatar Grand Prix", "circuit": "Qatar", "date": "2025-11-30"},
-    {"round": 21, "name": "Abu Dhabi Grand Prix", "circuit": "Abu Dhabi", "date": "2025-12-07"},
-]
+# Enable FastF1 cache
+fastf1.Cache.enable_cache(str(config.FASTF1_CACHE_DIR))
+
+
+def get_race_schedule(year=None):
+    """Dynamically fetch race schedule from FastF1"""
+    if year is None:
+        year = datetime.now().year
+    
+    schedule = fastf1.get_event_schedule(year)
+    schedule['EventDate'] = pd.to_datetime(schedule['EventDate'])
+    
+    races = []
+    for _, event in schedule.iterrows():
+        round_num = int(event.get('RoundNumber', 0))
+        if round_num == 0:  # Skip testing/pre-season
+            continue
+        races.append({
+            "round": round_num,
+            "name": event.get('EventName', 'Unknown'),
+            "circuit": event.get('Location', '') or event.get('Country', ''),
+            "date": event.get('EventDate').strftime('%Y-%m-%d') if pd.notna(event.get('EventDate')) else ''
+        })
+    
+    return races, year
 
 def predict_all_races():
-    """Predict all 2025 races using default qualifying (top drivers)"""
+    """Predict all races for current season using default qualifying (top drivers)"""
+    
+    # Get dynamic schedule
+    races, year = get_race_schedule()
+    total_races = len(races)
     
     logger.info("=" * 80)
-    logger.info("PREDICTING ALL 2025 F1 RACES")
+    logger.info(f"PREDICTING ALL {year} F1 RACES ({total_races} races)")
     logger.info("=" * 80)
     
     predictions_added = 0
     
-    # Default qualifying order (based on 2024 standings)
+    # Default qualifying order (based on current season strength)
     default_qualifying = [
         {"driver": "VER", "team": "Red Bull"},
         {"driver": "NOR", "team": "McLaren"},
         {"driver": "LEC", "team": "Ferrari"},
-        {"driver": "HAM", "team": "Mercedes"},
+        {"driver": "HAM", "team": "Ferrari"},
         {"driver": "RUS", "team": "Mercedes"},
-        {"driver": "SAI", "team": "Ferrari"},
+        {"driver": "SAI", "team": "Williams"},
         {"driver": "PIA", "team": "McLaren"},
         {"driver": "ALO", "team": "Aston Martin"},
-        {"driver": "HUL", "team": "Haas"},
-        {"driver": "TSU", "team": "Racing Bulls"},
+        {"driver": "HUL", "team": "Sauber"},
+        {"driver": "TSU", "team": "Red Bull"},
     ]
     
-    for race in RACES_2025:
+    for race in races:
         round_num = race["round"]
         race_name = race["name"]
         circuit = race["circuit"]
@@ -88,13 +96,13 @@ def predict_all_races():
             qual_df = pd.DataFrame(default_qualifying)
             
             # Generate race key
-            race_key = f"2025_{round_num}_{circuit.replace(' ', '_')}"
+            race_key = f"{year}_{round_num}_{circuit.replace(' ', '_')}"
             
             # Run predictions
             predictions = infer_from_qualifying(
                 qual_df,
                 race_key,
-                2025,
+                year,
                 race_name,
                 circuit
             )
@@ -118,11 +126,10 @@ def predict_all_races():
         
         except Exception as e:
             logger.error(f"  ERROR: {e}")
-            import traceback
             logger.error(traceback.format_exc())
     
     logger.info("\n" + "=" * 80)
-    logger.info(f"PREDICTION COMPLETE: {predictions_added}/21 races predicted")
+    logger.info(f"PREDICTION COMPLETE: {predictions_added}/{total_races} races predicted")
     logger.info("=" * 80)
 
 def fetch_all_predictions():

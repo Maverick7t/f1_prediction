@@ -191,3 +191,6 @@ timestamp,race,predicted,actual,correct,confidence,model_version
 2025-12-09T20:19:10.653598,Las Vegas Grand Prix,VER,,,61,v3
 2025-12-09T20:19:11.638247,Qatar Grand Prix,VER,,,61,v3
 2025-12-09T20:19:12.577172,Abu Dhabi Grand Prix,VER,,,61,v3
+2026-02-27T17:17:31.646949,Pre-Season Testing,NOR,,,66,v3
+2026-02-27T17:18:15.030699,Bahrain Grand Prix,VER,,,97,v3
+2026-02-27T17:18:57.984326,Saudi Arabian Grand Prix,VER,,,98,v3

@@ -4,12 +4,13 @@ import DriverCard from './DriverCard'
 import RaceInfoCard from './RaceInfoCard'
 import WinnerPredictionCard from './WinnerPredictionCard'
 import RaceHistoryCard from './RaceHistoryCard'
+import SeasonReviewCard from './SeasonReviewCard'
 import MatchupCard from './MatchupCard'
 import EnhancedCircuitMapCard from './EnhancedCircuitMapCard'
 import StandingsView from './StandingsView'
 import ConstructorStandingsView from './ConstructorStandingsView'
 import ModelMetricsCard from './ModelMetricsCard'
-import { fetchSaoPauloPredictions, transformPredictionsToDriverData, fetchNextRace, fetchCurrentDrivers, fetchConstructorStandings, fetchRaceHistory } from '../api'
+import { fetchSaoPauloPredictions, transformPredictionsToDriverData, fetchNextRace, fetchCurrentDrivers, fetchConstructorStandings, fetchRaceHistory, fetchSeasonReview } from '../api'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
@@ -24,91 +25,130 @@ export default function Dashboard() {
 
   const [constructorStandings, setConstructorStandings] = useState([])
   const [raceHistory, setRaceHistory] = useState([])
+  const [seasonReview, setSeasonReview] = useState(null)
+  const [isOffSeason, setIsOffSeason] = useState(false)
 
   // Fetch predictions on component mount
   useEffect(() => {
+    let cancelled = false
+
     async function loadPredictions() {
       try {
         setLoading(true)
 
-        // Fetch next race from OpenF1
-        try {
-          const raceInfo = await fetchNextRace()
-          setNextRace(raceInfo)
-          console.log('✓ Next race loaded:', raceInfo.raceName)
-        } catch (err) {
-          console.error('❌ Failed to load next race info:', err)
-          setNextRace({ error: err.message })
+        // Run all independent API calls in parallel with timeouts
+        const [raceResult, driversResult, constructorsResult, raceHistoryResult, predictionsResult] =
+          await Promise.allSettled([
+            fetchNextRace().catch(err => ({ error: err.message })),
+            fetchCurrentDrivers().catch(() => []),
+            fetchConstructorStandings().catch(() => []),
+            fetchRaceHistory().catch(() => []),
+            fetchSaoPauloPredictions()
+          ])
+
+        // If this effect was cleaned up (StrictMode), bail out
+        if (cancelled) return
+
+        // Process next race
+        if (raceResult.status === 'fulfilled') {
+          setNextRace(raceResult.value)
+          console.log('✓ Next race loaded:', raceResult.value?.raceName)
+        } else {
+          console.error('❌ Failed to load next race info:', raceResult.reason)
+          setNextRace({ error: raceResult.reason?.message })
         }
 
-        // Fetch current drivers from OpenF1
-        try {
-          const drivers = await fetchCurrentDrivers()
-          setOpenF1Drivers(drivers)
-          console.log(`✓ Loaded ${drivers.length} drivers from OpenF1`)
-        } catch (err) {
-          console.error('❌ Failed to load drivers info:', err)
+        // Process drivers
+        if (driversResult.status === 'fulfilled') {
+          setOpenF1Drivers(driversResult.value || [])
+          console.log(`✓ Loaded ${(driversResult.value || []).length} drivers from OpenF1`)
         }
 
-        // Fetch constructor standings
-        try {
-          const constructors = await fetchConstructorStandings()
-          setConstructorStandings(constructors)
+        // Process constructor standings
+        if (constructorsResult.status === 'fulfilled') {
+          setConstructorStandings(constructorsResult.value || [])
           console.log('✓ Constructor standings loaded')
-        } catch (err) {
-          console.error('❌ Failed to load constructor standings:', err)
         }
 
-        // Fetch race history
-        try {
-          const raceHistoryData = await fetchRaceHistory()
-          setRaceHistory(raceHistoryData)
-          console.log('✓ Race history loaded:', raceHistoryData.length, 'races')
-        } catch (err) {
-          console.error('❌ Failed to load race history:', err)
+        // Process race history
+        if (raceHistoryResult.status === 'fulfilled') {
+          setRaceHistory(raceHistoryResult.value || [])
+          console.log('✓ Race history loaded:', (raceHistoryResult.value || []).length, 'races')
+        } else {
           setRaceHistory([])
         }
 
-        // Fetch São Paulo predictions
-        try {
-          const predictions = await fetchSaoPauloPredictions()
+        // Process predictions
+        if (predictionsResult.status === 'fulfilled') {
+          const predictions = predictionsResult.value
+
+          // Check if we're in off-season mode
+          if (predictions.isOffSeason && predictions.seasonReview) {
+            setIsOffSeason(true)
+            setSeasonReview(predictions.seasonReview)
+            console.log(`✓ Off-season mode: showing ${predictions.seasonReview.year} season review`)
+          } else {
+            setIsOffSeason(false)
+          }
 
           // Transform predictions to driver data
           const drivers = transformPredictionsToDriverData(predictions)
           setDriverData(drivers)
 
           // Set winner prediction
-          setWinnerPrediction({
-            driver: predictions.winner_prediction.driver,
-            team: predictions.winner_prediction.team,
-            percentage: predictions.winner_prediction.percentage
-          })
+          if (predictions.winner_prediction) {
+            setWinnerPrediction({
+              driver: predictions.winner_prediction.driver,
+              team: predictions.winner_prediction.team,
+              percentage: predictions.winner_prediction.percentage
+            })
+          }
 
           setError(null)
           console.log('✓ All predictions loaded from backend')
-        } catch (err) {
-          console.error('❌ Failed to load predictions:', err)
-          setError('Failed to load predictions from API. Please ensure the backend is running.')
+        } else {
+          console.error('❌ Failed to load predictions:', predictionsResult.reason)
+
+          // Try to load season review directly as fallback
+          try {
+            if (cancelled) return
+            const review = await fetchSeasonReview()
+            if (cancelled) return
+            setSeasonReview(review)
+            setIsOffSeason(true)
+            console.log(`✓ Fallback: loaded ${review.year} season review`)
+          } catch (reviewErr) {
+            console.error('❌ Season review fallback also failed:', reviewErr)
+          }
+
+          setError('Failed to load predictions from API. Showing season review instead.')
           setDriverData([])
           setWinnerPrediction(null)
         }
       } catch (outerErr) {
         console.error('❌ Unexpected error in loadPredictions:', outerErr)
-        setError('An unexpected error occurred while loading data.')
+        if (!cancelled) {
+          setError('An unexpected error occurred while loading data.')
+        }
       } finally {
-        setLoading(false)
+        if (!cancelled) {
+          setLoading(false)
+        }
       }
     }
 
     loadPredictions()
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   return (
-    <div style={{
+    <div className="dashboard-root" style={{
       backgroundColor: '#1a1a1a',
       minHeight: '100vh',
-      padding: '24px 32px',
-      fontFamily: 'system-ui, -apple-system, sans-serif',
+      fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
       color: '#e2e8f0'
     }}>
       {/* Header Component */}
@@ -127,12 +167,12 @@ export default function Dashboard() {
             fontWeight: '700',
             marginBottom: '12px'
           }}>Loading Predictions...</div>
-          <div>Fetching data from ML model...</div>
+          <div style={{ fontSize: '14px' }}>Fetching data from ML model...</div>
         </div>
       )}
 
-      {/* Error State */}
-      {error && !loading && (
+      {/* Error State - only show if NOT in off-season mode */}
+      {error && !loading && !isOffSeason && (
         <div style={{
           backgroundColor: 'rgba(239, 68, 68, 0.1)',
           border: '1px solid rgba(239, 68, 68, 0.3)',
@@ -140,16 +180,70 @@ export default function Dashboard() {
           padding: '20px',
           margin: '20px 0',
           color: '#fca5a5',
-          fontSize: '13px'
+          fontSize: '14px'
         }}>
           <div style={{ fontWeight: '700', marginBottom: '8px' }}>⚠️ {error}</div>
-          <div style={{ fontSize: '12px', opacity: 0.8 }}>Showing fallback data. Make sure the API server is running on {API_BASE_URL}</div>
+          <div style={{ fontSize: '13px', opacity: 0.8 }}>Showing fallback data. Make sure the API server is running on {API_BASE_URL}</div>
         </div>
       )}
 
       {/* Current Race Tab Content */}
       {!loading && activeTab === 'current' && (
-        driverData.length === 0 && error ? (
+        isOffSeason && seasonReview ? (
+          /* OFF-SEASON: Show Season Review */
+          <div className="dashboard-wide" style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '24px'
+          }}>
+            {/* Off-Season Banner */}
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(239, 68, 68, 0.05) 100%)',
+              border: '1px solid rgba(245, 158, 11, 0.3)',
+              borderRadius: '12px',
+              padding: '20px 28px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '16px'
+            }}>
+              <div style={{
+                fontSize: '28px',
+                lineHeight: 1
+              }}>
+                🏁
+              </div>
+              <div>
+                <div style={{
+                  fontSize: '16px',
+                  fontWeight: '700',
+                  color: '#f59e0b',
+                  marginBottom: '4px'
+                }}>
+                  Season Not Yet Started
+                </div>
+                <div style={{
+                  fontSize: '14px',
+                  color: '#94a3b8'
+                }}>
+                  The {new Date().getFullYear()} season hasn't begun yet. Here's how our model performed during the {seasonReview.year} season.
+                </div>
+              </div>
+            </div>
+
+            {/* Season Review Card */}
+            <SeasonReviewCard
+              seasonReview={seasonReview}
+              onYearChange={async (year) => {
+                try {
+                  const review = await fetchSeasonReview(year)
+                  setSeasonReview(review)
+                } catch (err) {
+                  console.error('Failed to load season review for year:', year, err)
+                }
+              }}
+            />
+          </div>
+        ) : driverData.length === 0 && error && !seasonReview ? (
           <div style={{
             backgroundColor: 'rgba(239, 68, 68, 0.1)',
             border: '1px solid rgba(239, 68, 68, 0.3)',
@@ -167,14 +261,14 @@ export default function Dashboard() {
               Unable to Load Data
             </div>
             <div style={{
-              fontSize: '13px',
+              fontSize: '14px',
               color: '#cbd5e1',
               marginBottom: '20px'
             }}>
               {error}
             </div>
             <div style={{
-              fontSize: '12px',
+              fontSize: '13px',
               color: '#94a3b8'
             }}>
               Please check that:
@@ -193,12 +287,7 @@ export default function Dashboard() {
             </div>
           </div>
         ) : (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1.8fr',
-            gap: '28px',
-            maxWidth: '1600px'
-          }}>
+          <div className="dashboard-grid-main">
             {/* Left Column */}
             <div style={{
               display: 'flex',
@@ -206,12 +295,12 @@ export default function Dashboard() {
               gap: '20px'
             }}>
               <RaceInfoCard
-                raceName={nextRace?.raceName || "Abu Dhabi Grand Prix"}
-                dates={nextRace?.dateStart ? nextRace.dateStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase() : "DECEMBER 2024"}
+                raceName={nextRace?.raceName || "Australian Grand Prix"}
+                dates={nextRace?.dateStart ? nextRace.dateStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase() : "MARCH 2026"}
                 time={nextRace?.dateStart ? nextRace.dateStart.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }) : "TBD"}
-                track={nextRace?.circuitName || "Yas Marina Circuit"}
-                country={nextRace?.country || "United Arab Emirates"}
-                circuitImage={nextRace?.circuitImage || "https://media.formula1.com/image/upload/f_auto,c_limit,w_1440,q_auto/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Abu_Dhabi_Circuit"}
+                track={nextRace?.circuitName || "Albert Park Circuit"}
+                country={nextRace?.country || "Australia"}
+                circuitImage={nextRace?.circuitImage || "https://media.formula1.com/image/upload/f_auto,c_limit,w_1440,q_auto/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Australia_Circuit"}
               />
               <WinnerPredictionCard
                 percentage={winnerPrediction?.percentage || 72}
@@ -232,11 +321,7 @@ export default function Dashboard() {
               gap: '20px'
             }}>
               {/* Driver Predictions Grid - 2x3 */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(2, 1fr)',
-                gap: '14px'
-              }}>
+              <div className="driver-grid">
                 {driverData.map((driver, idx) => {
                   // Find matching driver from OpenF1
                   const openF1Driver = openF1Drivers.find(
@@ -271,29 +356,24 @@ export default function Dashboard() {
 
       {/* Driver Standings Tab */}
       {!loading && activeTab === 'standings' && (
-        <div style={{
-          maxWidth: '1000px'
-        }}>
+        <div className="dashboard-single">
           <StandingsView />
         </div>
       )}
 
       {/* Constructor Standings Tab */}
       {!loading && activeTab === 'constructor' && (
-        <div style={{
-          maxWidth: '1000px'
-        }}>
+        <div className="dashboard-single">
           <ConstructorStandingsView />
         </div>
       )}
 
       {/* Circuit Map Tab */}
       {!loading && activeTab === 'circuit' && (
-        <div style={{
+        <div className="dashboard-wide" style={{
           display: 'flex',
           flexDirection: 'column',
-          gap: '28px',
-          maxWidth: '1400px'
+          gap: '28px'
         }}>
           <EnhancedCircuitMapCard />
         </div>
@@ -301,13 +381,8 @@ export default function Dashboard() {
 
       {/* Matchup Tab */}
       {!loading && activeTab === 'matchup' && (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(2, 1fr)',
-          gap: '28px',
-          maxWidth: '1200px'
-        }}>
-          <MatchupCard />
+        <div className="dashboard-grid-matchup">
+          <MatchupCard drivers={driverData} />
           <div style={{
             display: 'flex',
             flexDirection: 'column',
@@ -320,9 +395,9 @@ export default function Dashboard() {
               padding: '18px'
             }}>
               <div style={{
-                fontSize: '11px',
+                fontSize: '13px',
                 fontWeight: '700',
-                letterSpacing: '1px',
+                letterSpacing: '0.5px',
                 color: '#94a3b8',
                 textTransform: 'uppercase',
                 marginBottom: '12px'
@@ -330,7 +405,7 @@ export default function Dashboard() {
                 HOW THIS WORKS
               </div>
               <div style={{
-                fontSize: '11px',
+                fontSize: '14px',
                 color: '#cbd5e1',
                 lineHeight: '1.8'
               }}>
@@ -352,7 +427,7 @@ export default function Dashboard() {
               padding: '16px'
             }}>
               <div style={{
-                fontSize: '11px',
+                fontSize: '13px',
                 fontWeight: '700',
                 color: '#10b981',
                 marginBottom: '8px'
@@ -360,7 +435,7 @@ export default function Dashboard() {
                 💡 PREDICTION TIP
               </div>
               <div style={{
-                fontSize: '10px',
+                fontSize: '13px',
                 color: '#cbd5e1',
                 lineHeight: '1.6'
               }}>
@@ -373,11 +448,10 @@ export default function Dashboard() {
 
       {/* MLOps Model Monitor Tab */}
       {!loading && activeTab === 'mlops' && (
-        <div style={{
+        <div className="dashboard-single" style={{
           display: 'flex',
           flexDirection: 'column',
-          gap: '28px',
-          maxWidth: '1200px'
+          gap: '28px'
         }}>
           <ModelMetricsCard />
         </div>

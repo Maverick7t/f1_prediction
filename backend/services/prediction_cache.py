@@ -122,8 +122,9 @@ class PredictionCache:
             if race_key not in self.qualifying:
                 return None
             
-            # Check if expired
-            if datetime.now() > self.qualifying_ttl.get(race_key, datetime.now()):
+            # Check if expired (default to epoch if TTL missing, so it expires)
+            ttl_default = datetime(2000, 1, 1)
+            if datetime.now() > self.qualifying_ttl.get(race_key, ttl_default):
                 # Expired, remove and return None
                 del self.qualifying[race_key]
                 if race_key in self.qualifying_ttl:
@@ -145,8 +146,9 @@ class PredictionCache:
             latest_time = None
             
             for key, entry in self.qualifying.items():
-                # Skip if expired
-                if datetime.now() > self.qualifying_ttl.get(key, datetime.now()):
+                # Skip if expired (default to epoch if TTL missing)
+                ttl_default = datetime(2000, 1, 1)
+                if datetime.now() > self.qualifying_ttl.get(key, ttl_default):
                     continue
                 
                 if latest_time is None or entry["timestamp"] > latest_time:

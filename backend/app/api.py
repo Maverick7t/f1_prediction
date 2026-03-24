@@ -22,6 +22,7 @@ import hashlib
 import fastf1
 from datetime import datetime
 import json
+import traceback
 
 # Import configuration
 from utils.config import config, ensure_directories, print_config
@@ -51,47 +52,40 @@ app = Flask(__name__)
 # Configure CORS with explicit settings for Vercel frontend
 CORS(app, resources={
     r"/api/*": {
-        "origins": ["https://fonewinner.vercel.app", "http://localhost:5173", "http://localhost:3000", "*"],
+        "origins": [
+            "https://fonewinner.vercel.app",
+            "http://localhost:5173",
+            "http://localhost:3000"
+        ],
         "methods": ["GET", "POST", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"],
         "supports_credentials": False
     }
 })
 
-# Add headers to prevent caching issues and ensure CORS
+# Add cache-control headers for API responses (CORS is handled by Flask-CORS above)
 @app.after_request
 def add_header(response):
-    """Add headers to prevent caching of API responses and ensure CORS"""
-    # Always add CORS headers
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
-    
+    """Add cache-control headers for API responses"""
     if '/api/' in str(request.path):
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
         response.headers['Pragma'] = 'no-cache'
         response.headers['Expires'] = '0'
     return response
 
-# Error handlers to ensure CORS headers are sent even on errors
+# Error handlers (CORS headers added automatically by Flask-CORS)
 @app.errorhandler(500)
 def handle_500(e):
-    response = jsonify({"success": False, "error": "Internal server error"})
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    return response, 500
+    return jsonify({"success": False, "error": "Internal server error"}), 500
 
 @app.errorhandler(404)
 def handle_404(e):
-    response = jsonify({"success": False, "error": "Not found"})
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    return response, 404
+    return jsonify({"success": False, "error": "Not found"}), 404
 
 @app.errorhandler(Exception)
 def handle_exception(e):
     logger.error(f"Unhandled exception: {e}")
-    response = jsonify({"success": False, "error": str(e)})
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    return response, 500
+    return jsonify({"success": False, "error": "An internal error occurred. Please try again later."}), 500
 
 # Configure logging based on config
 logging.basicConfig(
@@ -133,8 +127,9 @@ DRIVER_CODE_MAP = {
     '63': 'RUS', '81': 'PIA', '30': 'BEA', '14': 'ALO',
     '6': 'TSU', '10': 'GAG', '27': 'HUL', '18': 'SIR',
     '31': 'OCO', '87': 'STR', '43': 'BOT', '23': 'ALB',
-    '12': 'HAM', '5': 'VET', '22': 'LAT', '44': 'HAM',  # alt codes
-    # 2024 drivers (fallback)
+    '44': 'HAM', '12': 'BEA',  # Hamilton=44, Bearman=12
+    # Legacy/fallback drivers
+    '5': 'VET', '22': 'LAT',
     '3': 'RIC', '77': 'BOT', '20': 'MAG', '11': 'PER'
 }
 
@@ -159,13 +154,19 @@ try:
     # Load historical data (still needed for some legacy endpoints)
     # Prefer parquet if available (5.5x smaller, faster reads)
     from pathlib import Path
-    parquet_path = Path(HIST_CSV).with_suffix('.parquet')
-    if parquet_path.exists():
-        hist_data = pd.read_parquet(parquet_path)
-        logger.info(f"✓ Loaded historical data from parquet ({parquet_path.stat().st_size / 1024:.1f} KB)")
+    hist_path = Path(HIST_CSV)
+    if hist_path.suffix == '.parquet' and hist_path.exists():
+        hist_data = pd.read_parquet(hist_path)
+        logger.info(f"✓ Loaded historical data from parquet ({hist_path.stat().st_size / 1024:.1f} KB)")
+    elif hist_path.with_suffix('.parquet').exists():
+        hist_data = pd.read_parquet(hist_path.with_suffix('.parquet'))
+        logger.info(f"✓ Loaded historical data from parquet ({hist_path.with_suffix('.parquet').stat().st_size / 1024:.1f} KB)")
+    elif hist_path.exists():
+        hist_data = pd.read_csv(hist_path)
+        logger.info(f"⚠ Using CSV for historical data (consider converting to parquet)")
     else:
-        hist_data = pd.read_csv(HIST_CSV)
-        logger.info(f"⚠ Using CSV for historical data (consider running build_feature_snapshots.py)")
+        logger.error(f"❌ Historical data file not found: {hist_path}")
+        hist_data = pd.DataFrame()
     logger.info("Models and data loaded successfully")
     
     # Register models in MLflow (production models)
@@ -429,7 +430,7 @@ def get_next_race_from_fastf1(year=None):
     """
     try:
         if year is None:
-            year = 2025
+            year = datetime.now().year
         
         logger.info(f"Fetching next race from FastF1 for year {year}...")
         
@@ -769,7 +770,7 @@ def compute_basic_features(df):
     return df
 
 
-def infer_from_qualifying(qual_df, race_key, race_year, event, circuit):
+def infer_from_qualifying(qual_df, race_key, race_year, event, circuit, skip_cache=False):
     """
     Generate predictions from qualifying data using DYNAMIC feature computation.
     
@@ -782,6 +783,9 @@ def infer_from_qualifying(qual_df, race_key, race_year, event, circuit):
     2. MERGE with historical data (2018-2024)
     3. Compute ALL features dynamically using merged dataset
     4. Extract race rows and make predictions
+    
+    Args:
+        skip_cache: If True, skip Supabase/external cache writes (for batch operations like season review)
     """
     import time
     start = time.time()
@@ -901,27 +905,29 @@ def infer_from_qualifying(qual_df, race_key, race_year, event, circuit):
     
     logger.info(f"[infer] Prediction: {winner['driver']} {winner_pct}% ({winner_confidence['level']})")
     
-    # Log to MLflow
-    try:
-        log_prediction(
-            race_name=event,
-            predicted_winner=winner["driver"],
-            confidence=winner_pct,
-            model_version="v3"
-        )
-    except Exception as e:
-        logger.debug(f"MLflow prediction logging skipped: {e}")
+    # Log to MLflow (skip for batch operations like season review)
+    if not skip_cache:
+        try:
+            log_prediction(
+                race_name=event,
+                predicted_winner=winner["driver"],
+                confidence=winner_pct,
+                model_version="v3"
+            )
+        except Exception as e:
+            logger.debug(f"MLflow prediction logging skipped: {e}")
     
-    # Queue to Supabase (batch sync)
-    try:
-        qual_cache = get_qualifying_cache()
-        qual_cache.cache_qualifying(
-            race_key=race_key,
-            race_year=year,
-            qualifying_data=prediction["full_predictions"]
-        )
-    except Exception as e:
-        logger.debug(f"Qualifying cache queueing failed: {e}")
+    # Queue to Supabase (batch sync) - skip for batch operations like season review
+    if not skip_cache:
+        try:
+            qual_cache = get_qualifying_cache(config)
+            qual_cache.cache_qualifying(
+                race_key=race_key,
+                race_year=race_year,
+                qualifying_data=race_rows.sort_values("hybrid_score", ascending=False)[["driver", "team", "qualifying_position", "p_win", "p_pod", "hybrid_score"]].to_dict('records')
+            )
+        except Exception as e:
+            logger.debug(f"Qualifying cache queueing failed: {e}")
     
     return {
         "winner_prediction": {
@@ -1200,18 +1206,35 @@ def get_races_with_predictions_and_history():
     Get last 5 completed races with predictions and history.
     OPTIMIZED: Uses cache first, skips expensive FastF1 calls when possible
     Returns faster even if not all data is complete - targets <15s response
+    Falls back to previous year if current year has no completed races.
     """
     try:
         logger.info("Building race history with predictions...")
         
-        year = 2025
-        schedule = fastf1.get_event_schedule(year)
-        schedule['EventDate'] = pd.to_datetime(schedule['EventDate'])
+        year = datetime.now().year
+        try:
+            schedule = fastf1.get_event_schedule(year)
+            schedule['EventDate'] = pd.to_datetime(schedule['EventDate'])
+        except Exception as sched_err:
+            logger.warning(f"Could not get {year} schedule: {sched_err}")
+            # Try previous year
+            year = year - 1
+            schedule = fastf1.get_event_schedule(year)
+            schedule['EventDate'] = pd.to_datetime(schedule['EventDate'])
         
         today = pd.to_datetime(datetime.now().date())
         
         # Get last 5 completed races
         past_races = schedule[schedule['EventDate'] <= today].sort_values('EventDate', ascending=False)
+        
+        # If no completed races in current year, fall back to previous year
+        if past_races.empty and year == datetime.now().year:
+            logger.info(f"No completed races in {year}, falling back to {year - 1}")
+            year = year - 1
+            schedule = fastf1.get_event_schedule(year)
+            schedule['EventDate'] = pd.to_datetime(schedule['EventDate'])
+            past_races = schedule[schedule['EventDate'] <= today].sort_values('EventDate', ascending=False)
+        
         last_5_races = past_races.head(5)
         
         races = []
@@ -1242,7 +1265,6 @@ def get_races_with_predictions_and_history():
                     
                     if cached_qual:
                         if isinstance(cached_qual, str):
-                            import json
                             qual_data = json.loads(cached_qual)
                         else:
                             qual_data = cached_qual
@@ -1335,7 +1357,6 @@ def get_races_with_predictions_and_history():
         
     except Exception as e:
         logger.error(f"Error building race history: {e}")
-        import traceback
         logger.error(traceback.format_exc())
         return []
 
@@ -1354,9 +1375,13 @@ def get_next_race_prediction():
     try:
         logger.info("Getting next race prediction...")
         
-        year = 2025
-        schedule = fastf1.get_event_schedule(year)
-        schedule['EventDate'] = pd.to_datetime(schedule['EventDate'])
+        year = datetime.now().year
+        try:
+            schedule = fastf1.get_event_schedule(year)
+            schedule['EventDate'] = pd.to_datetime(schedule['EventDate'])
+        except Exception as sched_err:
+            logger.warning(f"Could not get {year} schedule: {sched_err}. Season may not be available yet.")
+            return None
         
         today = pd.to_datetime(datetime.now().date())
         
@@ -1386,7 +1411,6 @@ def get_next_race_prediction():
             
             if cached_qual:
                 if isinstance(cached_qual, str):
-                    import json
                     qual_data = json.loads(cached_qual)
                 else:
                     qual_data = cached_qual
@@ -1403,7 +1427,6 @@ def get_next_race_prediction():
                 latest = qual_cache.get_latest_cached_qualifying()
                 if latest:
                     if isinstance(latest, str):
-                        import json
                         qual_data = json.loads(latest)
                     else:
                         qual_data = latest
@@ -1478,7 +1501,6 @@ def get_next_race_prediction():
         
     except Exception as e:
         logger.error(f"Error getting next race prediction: {e}")
-        import traceback
         logger.error(traceback.format_exc())
         return None
 
@@ -1497,6 +1519,59 @@ def predict_sao_paulo():
     try:
         logger.info("=== Current Race Tab Request ===")
         
+        # Quick off-season check: see if any races have completed this year
+        # This avoids expensive Supabase/FastF1 calls when we're in off-season
+        year = datetime.now().year
+        try:
+            schedule = fastf1.get_event_schedule(year)
+            schedule['EventDate'] = pd.to_datetime(schedule['EventDate'])
+            today = pd.to_datetime(datetime.now().date())
+            
+            # Filter out testing events - only count actual race rounds
+            actual_races = schedule[schedule['RoundNumber'] > 0] if 'RoundNumber' in schedule.columns else schedule
+            completed_races = actual_races[actual_races['EventDate'] <= today]
+            has_completed_races = len(completed_races) > 0
+            
+            logger.info(f"Quick check: {len(completed_races)} completed races in {year}")
+        except Exception as sched_err:
+            logger.warning(f"Could not check {year} schedule: {sched_err}")
+            has_completed_races = False
+        
+        # If no completed races this year, go straight to season review
+        if not has_completed_races:
+            logger.info("Off-season detected (no completed races) - returning season review directly")
+            season_review = get_season_review()
+            
+            # Still try to get next race info (quick, just schedule lookup - already fetched above)
+            next_race_info = None
+            try:
+                future_races = actual_races[actual_races['EventDate'] > today].sort_values('EventDate')
+                if not future_races.empty:
+                    nxt = future_races.iloc[0]
+                    next_race_info = {
+                        "round": int(nxt.get('RoundNumber', 1)),
+                        "race": nxt.get('EventName', 'Unknown'),
+                        "circuit": nxt.get('EventName', 'Unknown'),
+                        "date": nxt['EventDate'].strftime('%Y-%m-%d'),
+                        "status": "pending",
+                        "predicted_winner": "TBA",
+                        "predicted_confidence": 0,
+                        "predicted_top3": [],
+                        "full_predictions": []
+                    }
+            except Exception:
+                pass
+            
+            return jsonify({
+                "success": True,
+                "race_history": [],
+                "next_race": next_race_info,
+                "is_off_season": True,
+                "season_review": season_review,
+                "accuracy": {"percentage": 0, "correct_predictions": 0, "total_races": 0}
+            })
+        
+        # Normal in-season flow
         # 1. Get race history with predictions for last 5 races
         race_history = get_races_with_predictions_and_history()
         
@@ -1517,6 +1592,8 @@ def predict_sao_paulo():
             "success": True,
             "race_history": race_history or [],
             "next_race": next_race,
+            "is_off_season": False,
+            "season_review": None,
             "accuracy": {
                 "percentage": accuracy_pct,
                 "correct_predictions": correct_predictions,
@@ -1524,33 +1601,361 @@ def predict_sao_paulo():
             }
         })
         
-        # Ensure CORS headers are set
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
-        
         return response
     
     except Exception as e:
         logger.error(f"Prediction error: {e}")
-        import traceback
         logger.error(traceback.format_exc())
         
-        response = jsonify({
+        return jsonify({
             "success": False,
             "error": str(e)[:200],  # Limit error message length
             "type": type(e).__name__
+        }), 500
+
+
+# =============================================================================
+# SEASON REVIEW ENDPOINT - Shows previous season prediction accuracy
+# =============================================================================
+
+# Cache for season review results (historical data doesn't change)
+_season_review_cache = {}
+
+def _load_season_review_from_supabase(year):
+    """Try to load a stored season review from the Supabase predictions table."""
+    try:
+        from supabase import create_client as _create_client
+        
+        supabase_url = config.SUPABASE_URL
+        supabase_key = getattr(config, 'SUPABASE_SERVICE_KEY', None) or getattr(config, 'SUPABASE_KEY', None)
+        
+        if not supabase_url or not supabase_key:
+            return None
+        
+        sb = _create_client(supabase_url, supabase_key)
+        
+        # Check for stored predictions for this year
+        races_result = sb.table('predictions').select('*').eq('race_year', year).neq('race', f'__SEASON_SUMMARY_{year}__').order('timestamp').execute()
+        
+        if not races_result.data or len(races_result.data) == 0:
+            return None
+        
+        logger.info(f"Loading {len(races_result.data)} stored predictions for {year} from Supabase")
+        
+        # Build races list from stored predictions
+        season_results = []
+        correct_count = 0
+        podium_correct_count = 0
+        
+        for row in races_result.data:
+            import json as _json
+            full_pred = {}
+            if row.get('full_predictions'):
+                try:
+                    full_pred = _json.loads(row['full_predictions']) if isinstance(row['full_predictions'], str) else row['full_predictions']
+                except:
+                    full_pred = {}
+            
+            is_correct = row.get('correct', False)
+            is_podium_correct = full_pred.get('podium_correct', False)
+            
+            if is_correct:
+                correct_count += 1
+            if is_podium_correct:
+                podium_correct_count += 1
+            
+            season_results.append({
+                "round": full_pred.get('round', len(season_results) + 1),
+                "race": row.get('race', ''),
+                "circuit": row.get('circuit', ''),
+                "date": full_pred.get('date', row.get('timestamp', '')),
+                "predicted_winner": row.get('predicted', 'N/A'),
+                "predicted_top3": full_pred.get('predicted_top3', []),
+                "confidence": row.get('confidence', 0),
+                "actual_winner": row.get('actual', ''),
+                "actual_podium": full_pred.get('actual_podium', []),
+                "correct": is_correct,
+                "podium_correct": is_podium_correct,
+                "status": full_pred.get('status', 'complete')
+            })
+        
+        total_races = len([r for r in season_results if r["status"] == "complete"])
+        accuracy = int((correct_count / total_races) * 100) if total_races > 0 else 0
+        podium_accuracy = int((podium_correct_count / total_races) * 100) if total_races > 0 else 0
+        
+        # Get available years from hist_data
+        available_years = sorted(hist_data['race_year'].unique()) if not hist_data.empty else [year]
+        
+        result = {
+            "year": year,
+            "races": season_results,
+            "stats": {
+                "total_races": total_races,
+                "correct_predictions": correct_count,
+                "accuracy_percentage": accuracy,
+                "podium_correct": podium_correct_count,
+                "podium_accuracy_percentage": podium_accuracy,
+                "total_with_data": len(season_results)
+            },
+            "available_years": [int(y) for y in available_years]
+        }
+        
+        logger.info(f"✓ Loaded season review for {year} from Supabase: {correct_count}/{total_races} correct ({accuracy}%)")
+        return result
+        
+    except Exception as e:
+        logger.debug(f"Could not load season review from Supabase: {e}")
+        return None
+
+def get_season_review(year=None):
+    """
+    Build a full season review from historical data.
+    
+    Priority:
+    1. In-memory cache (instant)
+    2. Supabase predictions table (fast DB read, ~1-2s)
+    3. Compute from scratch using ML model (slow, ~20s)
+    
+    If year is None, defaults to the most recent year in hist_data.
+    Results are cached since historical seasons don't change.
+    """
+    global _season_review_cache
+    
+    try:
+        if hist_data.empty:
+            logger.warning("No historical data available for season review")
+            return {"races": [], "year": year or 0, "accuracy": 0}
+        
+        # Determine the review year
+        available_years = sorted(hist_data['race_year'].unique())
+        if year is None:
+            year = int(available_years[-1])  # Latest year in data
+        
+        # Priority 1: In-memory cache
+        if year in _season_review_cache:
+            logger.info(f"Returning cached season review for {year}")
+            return _season_review_cache[year]
+        
+        # Priority 2: Supabase stored predictions
+        db_result = _load_season_review_from_supabase(year)
+        if db_result and db_result.get('races'):
+            _season_review_cache[year] = db_result  # Cache in memory too
+            return db_result
+        
+        if year not in available_years:
+            logger.warning(f"Year {year} not found in historical data. Available: {available_years}")
+            return {"races": [], "year": year, "accuracy": 0, "available_years": [int(y) for y in available_years]}
+        
+        logger.info(f"Building season review for {year}...")
+        
+        # Filter data for the target year
+        year_data = hist_data[hist_data['race_year'] == year].copy()
+        
+        # Get unique races (events) in chronological order
+        if 'event_date' in year_data.columns:
+            year_data['event_date'] = pd.to_datetime(year_data['event_date'], errors='coerce')
+            race_order = (
+                year_data.dropna(subset=['event_date'])
+                .groupby('event')['event_date']
+                .first()
+                .sort_values()
+            )
+            unique_races = race_order.index.tolist()
+        else:
+            unique_races = year_data['event'].unique().tolist()
+        
+        logger.info(f"Found {len(unique_races)} races in {year}")
+        
+        season_results = []
+        correct_count = 0
+        podium_correct_count = 0
+        
+        for race_event in unique_races:
+            try:
+                race_data = year_data[year_data['event'] == race_event].copy()
+                
+                if race_data.empty:
+                    continue
+                
+                # Get actual winner
+                winners = race_data[race_data['finishing_position'] == 1]
+                if winners.empty:
+                    # Try numeric conversion
+                    race_data['fp_num'] = pd.to_numeric(race_data['finishing_position'], errors='coerce')
+                    winners = race_data[race_data['fp_num'] == 1]
+                
+                actual_winner = winners.iloc[0]['driver'] if not winners.empty else 'Unknown'
+                
+                # Get actual podium (top 3)
+                race_data['fp_num'] = pd.to_numeric(race_data['finishing_position'], errors='coerce')
+                actual_podium = (
+                    race_data.dropna(subset=['fp_num'])
+                    .nsmallest(3, 'fp_num')['driver']
+                    .tolist()
+                )
+                
+                # Get race date
+                race_date = None
+                if 'event_date' in race_data.columns:
+                    dates = race_data['event_date'].dropna()
+                    if not dates.empty:
+                        race_date = pd.to_datetime(dates.iloc[0]).strftime('%Y-%m-%d')
+                
+                # Get circuit
+                circuit = race_data['circuit'].iloc[0] if 'circuit' in race_data.columns else race_event
+                
+                # Extract qualifying data for prediction
+                qual_rows = race_data[race_data['qualifying_position'].notna()].copy()
+                
+                if qual_rows.empty:
+                    # No qualifying data - skip prediction for this race
+                    season_results.append({
+                        "round": len(season_results) + 1,
+                        "race": race_event,
+                        "circuit": circuit,
+                        "date": race_date,
+                        "predicted_winner": "N/A",
+                        "predicted_top3": [],
+                        "confidence": 0,
+                        "actual_winner": actual_winner,
+                        "actual_podium": actual_podium,
+                        "correct": False,
+                        "podium_correct": False,
+                        "status": "no_qualifying_data"
+                    })
+                    continue
+                
+                # Build qualifying DataFrame for model
+                race_key = f"{year}_{len(season_results)+1}_{race_event.replace(' ', '_')}"
+                qual_df = qual_rows[['driver', 'team', 'qualifying_position']].copy()
+                qual_df['race_key'] = race_key
+                qual_df['race_year'] = year
+                qual_df['event'] = race_event
+                qual_df['circuit'] = circuit
+                
+                # Run prediction through the model (skip_cache=True for batch season review)
+                try:
+                    predictions = infer_from_qualifying(
+                        qual_df, race_key, year, race_event, circuit, skip_cache=True
+                    )
+                    
+                    predicted_winner = predictions["winner_prediction"]["driver"]
+                    predicted_confidence = predictions["winner_prediction"]["percentage"]
+                    predicted_top3 = [d["driver"] for d in predictions["top3_prediction"][:3]]
+                    
+                except Exception as pred_err:
+                    logger.warning(f"  Prediction failed for {race_event}: {pred_err}")
+                    predicted_winner = "Error"
+                    predicted_confidence = 0
+                    predicted_top3 = []
+                
+                # Check if prediction was correct
+                is_correct = (
+                    str(predicted_winner).upper() == str(actual_winner).upper()
+                )
+                
+                # Check if predicted winner was on actual podium
+                is_podium_correct = any(
+                    str(predicted_winner).upper() == str(p).upper()
+                    for p in actual_podium
+                )
+                
+                if is_correct:
+                    correct_count += 1
+                if is_podium_correct:
+                    podium_correct_count += 1
+                
+                season_results.append({
+                    "round": len(season_results) + 1,
+                    "race": race_event,
+                    "circuit": circuit,
+                    "date": race_date,
+                    "predicted_winner": predicted_winner,
+                    "predicted_top3": predicted_top3,
+                    "confidence": predicted_confidence,
+                    "actual_winner": actual_winner,
+                    "actual_podium": actual_podium,
+                    "correct": is_correct,
+                    "podium_correct": is_podium_correct,
+                    "status": "complete"
+                })
+                
+                logger.info(f"  {race_event}: Predicted={predicted_winner} | Actual={actual_winner} | {'✓' if is_correct else '✗'}")
+                
+            except Exception as e:
+                logger.error(f"  Error processing {race_event}: {e}")
+                continue
+        
+        total_races = len([r for r in season_results if r["status"] == "complete"])
+        accuracy = int((correct_count / total_races) * 100) if total_races > 0 else 0
+        podium_accuracy = int((podium_correct_count / total_races) * 100) if total_races > 0 else 0
+        
+        logger.info(f"✓ Season review for {year}: {correct_count}/{total_races} correct ({accuracy}%)")
+        
+        result = {
+            "year": year,
+            "races": season_results,
+            "stats": {
+                "total_races": total_races,
+                "correct_predictions": correct_count,
+                "accuracy_percentage": accuracy,
+                "podium_correct": podium_correct_count,
+                "podium_accuracy_percentage": podium_accuracy,
+                "total_with_data": len(season_results)
+            },
+            "available_years": [int(y) for y in available_years]
+        }
+        
+        # Cache the result (historical data doesn't change)
+        _season_review_cache[year] = result
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error building season review: {e}")
+        logger.error(traceback.format_exc())
+        return {"races": [], "year": year or 0, "stats": {"accuracy_percentage": 0}, "error": str(e)}
+
+
+@app.route('/api/season-review', methods=['GET'])
+@app.route('/api/season-review/<int:year>', methods=['GET'])
+def season_review_endpoint(year=None):
+    """
+    Season Review Endpoint
+    Returns full season prediction accuracy for a given year.
+    If no year specified, returns the most recent season in the dataset.
+    
+    Query params:
+      - year: Season year (optional, defaults to latest in data)
+    
+    Response:
+      - year: The season year
+      - races: Array of race results with predicted vs actual
+      - stats: Overall accuracy statistics
+      - available_years: List of years available for review
+    """
+    try:
+        # Allow year from query param or URL path
+        if year is None:
+            year = request.args.get('year', type=int)
+        
+        logger.info(f"=== Season Review Request (year={year}) ===")
+        
+        review = get_season_review(year)
+        
+        return jsonify({
+            "success": True,
+            **review
         })
         
-        # Ensure CORS headers even on error
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
-        
-        return response, 500
-
-
-# ---------- F1 Points System (2025) ----------
+    except Exception as e:
+        logger.error(f"Season review error: {e}")
+        logger.error(traceback.format_exc())
+        return jsonify({
+            "success": False,
+            "error": str(e)[:200],
+            "type": type(e).__name__
+        }), 500
 F1_POINTS_2025 = {
     1: 25,    # 1st place
     2: 18,    # 2nd place
@@ -1575,18 +1980,19 @@ def points_for_position(position):
 
 def get_2025_driver_standings_from_fastf1():
     """
-    Fetch 2025 driver standings from Ergast API (actual current points)
+    Fetch current season driver standings from Ergast API (actual current points)
     Returns list of drivers with current points and team info
     """
     try:
-        logger.info("Fetching 2025 driver standings from Ergast...")
+        current_year = datetime.now().year
+        logger.info(f"Fetching {current_year} driver standings from Ergast...")
         
         # Use FastF1's Ergast wrapper to get latest standings
         from fastf1.ergast import Ergast
         ergast = Ergast()
         
-        # Get latest standings for 2025 (None means latest round)
-        standings_data = ergast.get_driver_standings(season=2025, round=None)
+        # Get latest standings for current season (None means latest round)
+        standings_data = ergast.get_driver_standings(season=current_year, round=None)
         
         if standings_data.content is None or len(standings_data.content) == 0:
             logger.warning("No standings data from Ergast")
@@ -1663,18 +2069,19 @@ def predict_driver_points_for_future_races(driver_code, current_points, num_race
 
 def get_2025_constructor_standings_from_ergast():
     """
-    Fetch 2025 constructor standings from Ergast API (actual current points)
+    Fetch current season constructor standings from Ergast API (actual current points)
     Returns list of constructors with current points
     """
     try:
-        logger.info("Fetching 2025 constructor standings from Ergast...")
+        current_year = datetime.now().year
+        logger.info(f"Fetching {current_year} constructor standings from Ergast...")
         
         # Use FastF1's Ergast wrapper to get latest constructor standings
         from fastf1.ergast import Ergast
         ergast = Ergast()
         
-        # Get latest standings for 2025 (None means latest round)
-        standings_data = ergast.get_constructor_standings(season=2025, round=None)
+        # Get latest standings for current season (None means latest round)
+        standings_data = ergast.get_constructor_standings(season=current_year, round=None)
         
         if standings_data.content is None or len(standings_data.content) == 0:
             logger.warning("No constructor standings data from Ergast")
@@ -1757,18 +2164,18 @@ def get_latest_race_circuit_data():
             'Suzuka': 'https://via.placeholder.com/1440x810/1a1a1a/00d4ff?text=Suzuka+Circuit'
         }
         
-        # Check rounds in reverse order (prioritize recent races)
-        # 2025: São Paulo (21), Las Vegas (22)
-        rounds_to_check = [22, 21, 23, 24] + list(range(20, 0, -1))
+        # Check rounds in reverse order for current season
+        current_year = datetime.now().year
+        rounds_to_check = list(range(24, 0, -1))
         
         session = None
         latest_round = None
         
-        logger.info(f"Searching for latest completed race with results...")
+        logger.info(f"Searching for latest completed race with results ({current_year})...")
         
         for round_num in rounds_to_check:
             try:
-                s = fastf1.get_session(2025, round_num, 'R')
+                s = fastf1.get_session(current_year, round_num, 'R')
                 s.load(telemetry=False, weather=False)
                 
                 # Check if results are available and not empty
@@ -1858,13 +2265,9 @@ def race_history():
     2. Model predictions based on qualifying
     3. Actual winners (from training data for historical races)
     """
-    # Handle CORS preflight
+    # Handle CORS preflight (Flask-CORS handles this automatically)
     if request.method == "OPTIONS":
-        response = jsonify({"status": "ok"})
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
-        return response, 200
+        return jsonify({"status": "ok"}), 200
     try:
         # Check memory cache first
         cache = get_file_cache()
@@ -1886,7 +2289,8 @@ def race_history():
         # Get latest qualifying cache from Supabase
         try:
             # Use the QualifyingCache instance from database_v2
-            cached_qualifying = get_qualifying_cache()
+            qual_cache_instance = get_qualifying_cache(config)
+            cached_qualifying = qual_cache_instance.get_latest_cached_qualifying()
             
             if cached_qualifying is None:
                 logger.warning("No qualifying data in Supabase cache")
@@ -1899,15 +2303,14 @@ def race_history():
             
             # cached_qualifying is the JSON/dict of qualifying data
             if isinstance(cached_qualifying, str):
-                import json
                 qualifying_data = json.loads(cached_qualifying)
             else:
                 qualifying_data = cached_qualifying
             
             # Extract race info from the cache or use latest
             race_name = "Latest Qualifying"  # Default name
-            race_year = 2025
-            race_date = "2025-12-06"
+            race_year = datetime.now().year
+            race_date = datetime.now().strftime('%Y-%m-%d')
             
             logger.info(f"Cached qualifying type: {type(qualifying_data)}, is list: {isinstance(qualifying_data, list)}")
             if isinstance(qualifying_data, list) and len(qualifying_data) > 0:
@@ -1988,7 +2391,6 @@ def race_history():
                     
                 except Exception as e:
                     logger.error(f"Prediction error: {e}")
-                    import traceback
                     traceback.print_exc()
                 
                 races.append({
@@ -2006,7 +2408,6 @@ def race_history():
             pass
         except Exception as e:
             logger.error(f"Supabase cache error: {e}")
-            import traceback
             traceback.print_exc()
         
         logger.info(f"Race history ready: {len(races)} race(s) with predictions")
@@ -2024,7 +2425,6 @@ def race_history():
     
     except Exception as e:
         logger.error(f"Race history error: {e}")
-        import traceback
         traceback.print_exc()
         
         # Fallback: return empty with error explanation
@@ -2040,7 +2440,7 @@ def race_history():
 def api_next_race():
     """Get next race information from FastF1 with circuit image from Wikipedia"""
     # Get next race from FastF1
-    nr = get_next_race_from_fastf1(year=2025)
+    nr = get_next_race_from_fastf1(year=None)
     
     if not nr:
         # Fallback to Ergast if FastF1 doesn't have data
@@ -2238,6 +2638,7 @@ def latest_race_circuit():
 # Cache for qualifying session to avoid reloading
 _cached_qualifying_session = None
 _cached_qualifying_timestamp = None
+_qualifying_session_lock = __import__('threading').Lock()
 
 def get_cached_qualifying_session():
     """Load and cache the latest qualifying session with real FastF1 data"""
@@ -2247,15 +2648,16 @@ def get_cached_qualifying_session():
     
     current_time = time.time()
     # Refresh cache every 30 minutes
-    if _cached_qualifying_session is not None and (current_time - _cached_qualifying_timestamp) < 1800:
-        logger.debug("Returning cached qualifying session")
-        return _cached_qualifying_session
+    with _qualifying_session_lock:
+        if _cached_qualifying_session is not None and (current_time - _cached_qualifying_timestamp) < 1800:
+            logger.debug("Returning cached qualifying session")
+            return _cached_qualifying_session
     
     try:
         logger.info("Loading latest qualifying session from FastF1...")
         
-        # Prioritize 2025, then 2024
-        years_to_try = [2025, 2024, 2023]
+        # Prioritize current season, then prior seasons
+        years_to_try = [2026, 2025, 2024]
         
         for year in years_to_try:
             try:
@@ -2295,8 +2697,9 @@ def get_cached_qualifying_session():
                                 test_laps = session.laps.pick_drivers([test_driver])
                                 if not test_laps.empty:
                                     logger.info(f"✓ Successfully loaded {event_name} {year} qualifying session with {len(session.results)} drivers and telemetry")
-                                    _cached_qualifying_session = session
-                                    _cached_qualifying_timestamp = current_time
+                                    with _qualifying_session_lock:
+                                        _cached_qualifying_session = session
+                                        _cached_qualifying_timestamp = current_time
                                     return session
                             except Exception as e:
                                 logger.debug(f"Telemetry check failed for {event_name}: {str(e)[:50]}")
@@ -2505,7 +2908,6 @@ def driver_telemetry_data():
     
     except Exception as e:
         logger.error(f"Error in driver_telemetry endpoint: {str(e)[:200]}")
-        import traceback
         logger.error(traceback.format_exc())
         return jsonify({
             "success": False,
@@ -2719,7 +3121,6 @@ def qualifying_circuit_telemetry():
     
     except Exception as e:
         logger.error(f"Error in qualifying_circuit_telemetry: {str(e)[:200]}")
-        import traceback
         logger.error(traceback.format_exc())
         
         # Try to return stale cache if available
@@ -2850,7 +3251,6 @@ def driver_circuit_details(driver_code):
     
     except Exception as e:
         logger.error(f"Error in driver_circuit_details: {str(e)[:200]}")
-        import traceback
         logger.error(traceback.format_exc())
         return jsonify({
             "success": False,
@@ -2942,7 +3342,8 @@ if __name__ == '__main__':
         app.run(
             debug=config.DEBUG,
             host=config.HOST,
-            port=config.PORT
+            port=config.PORT,
+            threaded=True
         )
     except KeyboardInterrupt:
         logger.info("Shutting down...")

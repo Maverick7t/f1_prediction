@@ -17,9 +17,9 @@ export default function RaceInfoCard({
             overflow: 'hidden'
         }}>
             <div style={{
-                fontSize: '11px',
+                fontSize: '13px',
                 fontWeight: '700',
-                letterSpacing: '1px',
+                letterSpacing: '0.5px',
                 color: '#888888',
                 textTransform: 'uppercase',
                 marginBottom: '12px'
@@ -67,7 +67,7 @@ export default function RaceInfoCard({
                             {track === 'Loading...' ? 'LOADING CIRCUIT...' : track.toUpperCase()}
                         </div>
                         <div style={{
-                            fontSize: '10px',
+                            fontSize: '12px',
                             color: '#64748b',
                             opacity: 0.7
                         }}>
@@ -110,7 +110,7 @@ export default function RaceInfoCard({
                 <div>
                     <div style={{
                         color: '#888888',
-                        fontSize: '9px',
+                        fontSize: '11px',
                         fontWeight: '600',
                         letterSpacing: '0.5px',
                         marginBottom: '2px',
@@ -120,7 +120,7 @@ export default function RaceInfoCard({
                     </div>
                     <div style={{
                         color: '#e2e8f0',
-                        fontSize: '12px',
+                        fontSize: '15px',
                         fontWeight: '700'
                     }}>
                         {raceName}
@@ -128,7 +128,7 @@ export default function RaceInfoCard({
                     {country && (
                         <div style={{
                             color: '#888888',
-                            fontSize: '10px',
+                            fontSize: '12px',
                             marginTop: '2px'
                         }}>
                             📍 {country}
@@ -139,7 +139,7 @@ export default function RaceInfoCard({
                 <div>
                     <div style={{
                         color: '#888888',
-                        fontSize: '9px',
+                        fontSize: '11px',
                         fontWeight: '600',
                         letterSpacing: '0.5px',
                         marginBottom: '2px',
@@ -149,7 +149,7 @@ export default function RaceInfoCard({
                     </div>
                     <div style={{
                         color: '#cbd5e1',
-                        fontSize: '11px'
+                        fontSize: '14px'
                     }}>
                         {dates}
                     </div>
@@ -160,7 +160,7 @@ export default function RaceInfoCard({
                     alignItems: 'center',
                     gap: '6px',
                     color: '#cbd5e1',
-                    fontSize: '11px'
+                    fontSize: '14px'
                 }}>
                     <span>🕐</span>
                     <span>{time}</span>
@@ -173,9 +173,9 @@ export default function RaceInfoCard({
                 backgroundColor: '#00d4ff',
                 color: '#000',
                 border: 'none',
-                padding: '8px',
+                padding: '10px',
                 borderRadius: '6px',
-                fontSize: '11px',
+                fontSize: '13px',
                 fontWeight: '700',
                 cursor: 'pointer',
                 transition: 'all 0.3s ease'

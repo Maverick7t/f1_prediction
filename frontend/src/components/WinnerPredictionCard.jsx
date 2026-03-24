@@ -54,9 +54,9 @@ export default function WinnerPredictionCard({
             }} />
 
             <div style={{
-                fontSize: '11px',
+                fontSize: '13px',
                 fontWeight: '700',
-                letterSpacing: '1px',
+                letterSpacing: '0.5px',
                 color: '#888888',
                 textTransform: 'uppercase',
                 marginBottom: '14px',
@@ -80,7 +80,7 @@ export default function WinnerPredictionCard({
                     alignItems: 'flex-start'
                 }}>
                     <div style={{
-                        fontSize: '56px',
+                        fontSize: '48px',
                         fontWeight: '800',
                         color: '#ffffff',
                         lineHeight: '1',
@@ -89,7 +89,7 @@ export default function WinnerPredictionCard({
                         {percentage}%
                     </div>
                     <div style={{
-                        fontSize: '9px',
+                        fontSize: '11px',
                         fontWeight: '700',
                         color: confidence === 'HIGH' ? confidenceColor : '#ffffff',
                         letterSpacing: '1px',
@@ -112,7 +112,7 @@ export default function WinnerPredictionCard({
                     alignItems: 'flex-end'
                 }}>
                     <div style={{
-                        fontSize: displayName.includes(' ') ? '56px' : '42px',
+                        fontSize: displayName.includes(' ') ? '48px' : '36px',
                         fontWeight: '800',
                         color: '#ffffff',
                         lineHeight: '1',
@@ -122,7 +122,7 @@ export default function WinnerPredictionCard({
                     </div>
                     {displayName.includes(' ') && (
                         <div style={{
-                            fontSize: '9px',
+                            fontSize: '12px',
                             fontWeight: '700',
                             color: '#ffffff',
                             letterSpacing: '1px'

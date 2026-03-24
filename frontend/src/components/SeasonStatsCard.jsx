@@ -20,9 +20,9 @@ export default function SeasonStatsCard({
             transition: 'all 0.3s ease'
         }}>
             <div style={{
-                fontSize: '11px',
+                fontSize: '13px',
                 fontWeight: '700',
-                letterSpacing: '1px',
+                letterSpacing: '0.5px',
                 color: '#888888',
                 textTransform: 'uppercase',
                 marginBottom: '8px'
@@ -30,7 +30,7 @@ export default function SeasonStatsCard({
                 SEASON
             </div>
             <div style={{
-                fontSize: '10px',
+                fontSize: '12px',
                 color: '#888888',
                 marginBottom: '12px',
                 fontWeight: '600'
@@ -61,7 +61,7 @@ export default function SeasonStatsCard({
                     onClick={() => setSelectedSection(selectedSection === 'predicted' ? null : 'predicted')}
                 >
                     <div style={{
-                        fontSize: '9px',
+                        fontSize: '11px',
                         color: '#888888',
                         marginBottom: '2px'
                     }}>
@@ -76,7 +76,7 @@ export default function SeasonStatsCard({
                     </div>
                     {selectedSection === 'predicted' && (
                         <div style={{
-                            fontSize: '8px',
+                            fontSize: '11px',
                             color: '#22c55e',
                             marginTop: '4px'
                         }}>
@@ -100,7 +100,7 @@ export default function SeasonStatsCard({
                     onClick={() => setSelectedSection(selectedSection === 'actual' ? null : 'actual')}
                 >
                     <div style={{
-                        fontSize: '9px',
+                        fontSize: '11px',
                         color: '#888888',
                         marginBottom: '2px'
                     }}>
@@ -115,7 +115,7 @@ export default function SeasonStatsCard({
                     </div>
                     {selectedSection === 'actual' && (
                         <div style={{
-                            fontSize: '8px',
+                            fontSize: '11px',
                             color: '#ea580c',
                             marginTop: '4px'
                         }}>
@@ -158,7 +158,7 @@ export default function SeasonStatsCard({
                             color: '#1a1a1a',
                             padding: '4px 8px',
                             borderRadius: '4px',
-                            fontSize: '10px',
+                            fontSize: '11px',
                             fontWeight: '700',
                             whiteSpace: 'nowrap',
                             zIndex: 10
@@ -189,7 +189,7 @@ export default function SeasonStatsCard({
                             color: '#ffffff',
                             padding: '4px 8px',
                             borderRadius: '4px',
-                            fontSize: '10px',
+                            fontSize: '11px',
                             fontWeight: '700',
                             whiteSpace: 'nowrap',
                             zIndex: 10
@@ -219,7 +219,7 @@ export default function SeasonStatsCard({
                             borderLeft: `3px solid ${detail.correct ? '#22c55e' : '#ef4444'}`,
                             cursor: 'pointer',
                             transition: 'all 0.2s ease',
-                            fontSize: '9px'
+                            fontSize: '12px'
                         }}
                         onMouseEnter={() => setHoveredRace(idx)}
                         onMouseLeave={() => setHoveredRace(null)}
@@ -233,12 +233,12 @@ export default function SeasonStatsCard({
                             <span style={{
                                 color: '#cbd5e1',
                                 fontWeight: '700',
-                                fontSize: '10px'
+                                fontSize: '13px'
                             }}>{detail.race}</span>
                             <span style={{
                                 color: detail.correct ? '#22c55e' : '#ef4444',
                                 fontWeight: '700',
-                                fontSize: '8px'
+                                fontSize: '11px'
                             }}>
                                 {detail.correct ? '✓ CORRECT' : '✗ MISSED'}
                             </span>
@@ -262,7 +262,7 @@ export default function SeasonStatsCard({
                             <div style={{
                                 marginTop: '4px',
                                 color: '#64748b',
-                                fontSize: '8px'
+                                fontSize: '11px'
                             }}>
                                 Confidence: {detail.confidence}%
                             </div>
@@ -273,11 +273,11 @@ export default function SeasonStatsCard({
                         textAlign: 'center',
                         padding: '12px',
                         color: '#888888',
-                        fontSize: '9px'
+                        fontSize: '12px'
                     }}>
                         No race data available
                     </div>
-                )}
+                ))}
             </div>
 
             {/* Accuracy */}
@@ -289,7 +289,7 @@ export default function SeasonStatsCard({
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    fontSize: '10px',
+                    fontSize: '13px',
                     cursor: 'pointer',
                     transition: 'all 0.3s ease',
                     border: selectedSection === 'accuracy' ? '1px solid #00d4ff' : 'none'
@@ -308,7 +308,7 @@ export default function SeasonStatsCard({
                     padding: '8px',
                     backgroundColor: 'rgba(0, 212, 255, 0.05)',
                     borderRadius: '6px',
-                    fontSize: '9px',
+                    fontSize: '12px',
                     color: '#cbd5e1',
                     lineHeight: '1.6'
                 }}>

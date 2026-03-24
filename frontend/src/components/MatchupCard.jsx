@@ -1,19 +1,32 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 
 export default function MatchupCard({ drivers = [] }) {
-    const [driver1, setDriver1] = useState(drivers[0] || null)
-    const [driver2, setDriver2] = useState(drivers[1] || null)
+    // Build driver list from real prediction data, with a fallback
+    const driverList = useMemo(() => {
+        if (drivers.length > 0) {
+            return drivers.map((d, idx) => ({
+                id: idx + 1,
+                name: d.fullName || d.driver || `Driver ${idx + 1}`,
+                team: d.team || 'Unknown',
+                color: d.teamColor || '#888888',
+                odds: d.percentage || d.hybrid_score || 50
+            }));
+        }
+        // Fallback only if no prediction data available
+        return [
+            { id: 1, name: 'Max Verstappen', team: 'Red Bull', color: '#1e3a8a', odds: 85 },
+            { id: 2, name: 'Lando Norris', team: 'McLaren', color: '#ea580c', odds: 72 },
+            { id: 3, name: 'Charles Leclerc', team: 'Ferrari', color: '#dc2626', odds: 65 },
+            { id: 4, name: 'Lewis Hamilton', team: 'Ferrari', color: '#dc2626', odds: 58 },
+            { id: 5, name: 'Oscar Piastri', team: 'McLaren', color: '#ea580c', odds: 52 }
+        ];
+    }, [drivers]);
 
-    const mockDrivers = [
-        { id: 1, name: 'Max Verstappen', team: 'Red Bull', color: '#1e3a8a', odds: 85 },
-        { id: 2, name: 'Lando Norris', team: 'McLaren', color: '#ea580c', odds: 72 },
-        { id: 3, name: 'Charles Leclerc', team: 'Ferrari', color: '#dc2626', odds: 65 },
-        { id: 4, name: 'Lewis Hamilton', team: 'Mercedes', color: '#64748b', odds: 58 },
-        { id: 5, name: 'Carlos Sainz', team: 'Ferrari', color: '#dc2626', odds: 52 }
-    ]
+    const [driver1, setDriver1] = useState(null)
+    const [driver2, setDriver2] = useState(null)
 
-    const selectedDriver1 = driver1 || mockDrivers[0]
-    const selectedDriver2 = driver2 || mockDrivers[1]
+    const selectedDriver1 = driver1 || driverList[0]
+    const selectedDriver2 = driver2 || (driverList.length > 1 ? driverList[1] : driverList[0])
 
     const total = selectedDriver1.odds + selectedDriver2.odds
     const p1Percentage = (selectedDriver1.odds / total) * 100
@@ -27,9 +40,9 @@ export default function MatchupCard({ drivers = [] }) {
             padding: '18px'
         }}>
             <div style={{
-                fontSize: '11px',
+                fontSize: '13px',
                 fontWeight: '700',
-                letterSpacing: '1px',
+                letterSpacing: '0.5px',
                 color: '#888888',
                 textTransform: 'uppercase',
                 marginBottom: '16px'
@@ -47,7 +60,7 @@ export default function MatchupCard({ drivers = [] }) {
             }}>
                 <div>
                     <label style={{
-                        fontSize: '9px',
+                        fontSize: '11px',
                         fontWeight: '600',
                         color: '#888888',
                         display: 'block',
@@ -57,7 +70,7 @@ export default function MatchupCard({ drivers = [] }) {
                     </label>
                     <select
                         value={selectedDriver1.id}
-                        onChange={(e) => setDriver1(mockDrivers.find(d => d.id === parseInt(e.target.value)))}
+                        onChange={(e) => setDriver1(driverList.find(d => d.id === parseInt(e.target.value)))}
                         style={{
                             width: '100%',
                             backgroundColor: '#0f0f0f',
@@ -65,12 +78,12 @@ export default function MatchupCard({ drivers = [] }) {
                             border: '1px solid #3a3a3a',
                             padding: '8px',
                             borderRadius: '6px',
-                            fontSize: '11px',
+                            fontSize: '14px',
                             fontWeight: '600',
                             cursor: 'pointer'
                         }}
                     >
-                        {mockDrivers.map(driver => (
+                        {driverList.map(driver => (
                             <option key={driver.id} value={driver.id} style={{ backgroundColor: '#1a1a1a' }}>
                                 {driver.name}
                             </option>
@@ -82,7 +95,7 @@ export default function MatchupCard({ drivers = [] }) {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    fontSize: '14px',
+                    fontSize: '16px',
                     fontWeight: '800',
                     color: '#888888',
                     padding: '8px 12px',
@@ -94,7 +107,7 @@ export default function MatchupCard({ drivers = [] }) {
 
                 <div>
                     <label style={{
-                        fontSize: '9px',
+                        fontSize: '11px',
                         fontWeight: '600',
                         color: '#888888',
                         display: 'block',
@@ -104,7 +117,7 @@ export default function MatchupCard({ drivers = [] }) {
                     </label>
                     <select
                         value={selectedDriver2.id}
-                        onChange={(e) => setDriver2(mockDrivers.find(d => d.id === parseInt(e.target.value)))}
+                        onChange={(e) => setDriver2(driverList.find(d => d.id === parseInt(e.target.value)))}
                         style={{
                             width: '100%',
                             backgroundColor: '#0f0f0f',
@@ -112,12 +125,12 @@ export default function MatchupCard({ drivers = [] }) {
                             border: '1px solid #3a3a3a',
                             padding: '8px',
                             borderRadius: '6px',
-                            fontSize: '11px',
+                            fontSize: '14px',
                             fontWeight: '600',
                             cursor: 'pointer'
                         }}
                     >
-                        {mockDrivers.map(driver => (
+                        {driverList.map(driver => (
                             <option key={driver.id} value={driver.id} style={{ backgroundColor: '#1a1a1a' }}>
                                 {driver.name}
                             </option>
@@ -155,7 +168,7 @@ export default function MatchupCard({ drivers = [] }) {
                         👤
                     </div>
                     <div style={{
-                        fontSize: '11px',
+                        fontSize: '14px',
                         fontWeight: '700',
                         color: '#e2e8f0',
                         marginBottom: '4px'
@@ -163,14 +176,14 @@ export default function MatchupCard({ drivers = [] }) {
                         {selectedDriver1.name.split(' ')[1]}
                     </div>
                     <div style={{
-                        fontSize: '9px',
+                        fontSize: '12px',
                         color: '#888888',
                         marginBottom: '8px'
                     }}>
                         {selectedDriver1.team}
                     </div>
                     <div style={{
-                        fontSize: '20px',
+                        fontSize: '24px',
                         fontWeight: '800',
                         color: selectedDriver1.color
                     }}>
@@ -200,7 +213,7 @@ export default function MatchupCard({ drivers = [] }) {
                         👤
                     </div>
                     <div style={{
-                        fontSize: '11px',
+                        fontSize: '14px',
                         fontWeight: '700',
                         color: '#e2e8f0',
                         marginBottom: '4px'
@@ -208,14 +221,14 @@ export default function MatchupCard({ drivers = [] }) {
                         {selectedDriver2.name.split(' ')[1]}
                     </div>
                     <div style={{
-                        fontSize: '9px',
+                        fontSize: '12px',
                         color: '#888888',
                         marginBottom: '8px'
                     }}>
                         {selectedDriver2.team}
                     </div>
                     <div style={{
-                        fontSize: '20px',
+                        fontSize: '24px',
                         fontWeight: '800',
                         color: selectedDriver2.color
                     }}>
@@ -257,7 +270,7 @@ export default function MatchupCard({ drivers = [] }) {
                 backgroundColor: 'rgba(0, 212, 255, 0.1)',
                 borderRadius: '6px',
                 borderLeft: '3px solid #00d4ff',
-                fontSize: '10px',
+                fontSize: '13px',
                 color: '#cbd5e1',
                 lineHeight: '1.5'
             }}>

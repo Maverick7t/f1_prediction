@@ -11,17 +11,20 @@ import fastf1
 from pathlib import Path
 import sys
 
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent))
+# Add parent directory to path so we can import sibling packages
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from config import config
-from database_v2 import get_qualifying_cache, get_prediction_logger
-from prediction_cache import get_prediction_cache
+from utils.config import config
+from database.database_v2 import get_qualifying_cache, get_prediction_logger
+from services.prediction_cache import get_prediction_cache
 
 logger = logging.getLogger(__name__)
 
 # FastF1 cache setup
 fastf1.Cache.enable_cache(str(config.FASTF1_CACHE_DIR))
+
+# Create the scheduler instance
+scheduler = BackgroundScheduler()
 
 def check_and_cache_latest_qualifying():
     """

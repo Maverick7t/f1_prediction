@@ -15,11 +15,21 @@ function isCacheValid() {
 }
 
 /**
+ * Fetch with timeout to prevent hanging requests
+ */
+function fetchWithTimeout(url, options = {}, timeoutMs = 30000) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
+    return fetch(url, { ...options, signal: controller.signal })
+        .finally(() => clearTimeout(id));
+}
+
+/**
  * Fetch race history from backend - last 5 races with predictions vs actual results
  */
 export async function fetchRaceHistory() {
     try {
-        const response = await fetch(`${API_BASE_URL}/api/race-history`);
+        const response = await fetchWithTimeout(`${API_BASE_URL}/api/race-history`, {}, 10000);
 
         if (!response.ok) {
             throw new Error(`API error: ${response.status}`);
@@ -34,6 +44,40 @@ export async function fetchRaceHistory() {
         return result.data || [];
     } catch (error) {
         console.error('Error fetching race history:', error);
+        throw error;
+    }
+}
+
+/**
+ * Fetch season review - full season prediction accuracy for a given year
+ * @param {number} year - Season year (optional, defaults to latest in data)
+ */
+export async function fetchSeasonReview(year = null) {
+    try {
+        const url = year
+            ? `${API_BASE_URL}/api/season-review/${year}`
+            : `${API_BASE_URL}/api/season-review`;
+
+        const response = await fetchWithTimeout(url, {}, 15000);
+
+        if (!response.ok) {
+            throw new Error(`API error: ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        if (!result.success) {
+            throw new Error(result.error || 'Failed to fetch season review');
+        }
+
+        return {
+            year: result.year,
+            races: result.races || [],
+            stats: result.stats || {},
+            availableYears: result.available_years || []
+        };
+    } catch (error) {
+        console.error('Error fetching season review:', error);
         throw error;
     }
 }
@@ -106,7 +150,7 @@ export async function fetchAndPredict(raceMeta) {
  */
 export async function fetchSaoPauloPredictions() {
     try {
-        const response = await fetch(`${API_BASE_URL}/api/predict/sao-paulo`);
+        const response = await fetchWithTimeout(`${API_BASE_URL}/api/predict/sao-paulo`, {}, 45000);
 
         if (!response.ok) {
             throw new Error(`API error: ${response.status}`);
@@ -121,6 +165,33 @@ export async function fetchSaoPauloPredictions() {
         // The backend returns race_history and next_race, not full_predictions
         const nextRace = result.next_race;
         const raceHistory = result.race_history || [];
+        const isOffSeason = result.is_off_season || false;
+        const seasonReview = result.season_review || null;
+
+        // If off-season, return season review data
+        if (isOffSeason && seasonReview) {
+            return {
+                isSeasonEnded: true,
+                isOffSeason: true,
+                seasonReview: {
+                    year: seasonReview.year,
+                    races: seasonReview.races || [],
+                    stats: seasonReview.stats || {},
+                    availableYears: seasonReview.available_years || []
+                },
+                mostRecentRace: null,
+                winner_prediction: {
+                    driver: 'TBD',
+                    team: 'Unknown',
+                    percentage: 0,
+                    confidence: 'N/A'
+                },
+                top3_prediction: [],
+                full_predictions: [],
+                race_history: raceHistory,
+                message: `Off-season - showing ${seasonReview.year} season review`
+            };
+        }
 
         // If no next race, show the most recent race with "waiting for next race" message
         if (!nextRace) {
@@ -255,7 +326,7 @@ export async function fetchNextRace() {
 
     try {
         // Use backend API to get 2025 data from FastF1
-        const response = await fetch(`${API_BASE_URL}/api/next-race`);
+        const response = await fetchWithTimeout(`${API_BASE_URL}/api/next-race`, {}, 10000);
 
         if (!response.ok) {
             throw new Error(`Backend API error: ${response.status}`);
@@ -296,15 +367,15 @@ export async function fetchNextRace() {
 function getFallbackRaceData() {
     console.warn('Using fallback race data');
     return {
-        raceName: 'Abu Dhabi Grand Prix',
-        country: 'United Arab Emirates',
-        location: 'Abu Dhabi',
-        circuitName: 'Yas Marina Circuit',
-        circuitKey: 'yas-marina',
-        circuitImage: 'https://media.formula1.com/image/upload/f_auto,c_limit,w_1440,q_auto/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Abu_Dhabi_Circuit',
-        dateStart: new Date('2024-12-08T13:00:00Z'),
-        dateEnd: new Date('2024-12-08T15:00:00Z'),
-        year: 2024,
+        raceName: 'Australian Grand Prix',
+        country: 'Australia',
+        location: 'Melbourne',
+        circuitName: 'Albert Park Circuit',
+        circuitKey: 'albert-park',
+        circuitImage: 'https://media.formula1.com/image/upload/f_auto,c_limit,w_1440,q_auto/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Australia_Circuit',
+        dateStart: new Date('2026-03-15T05:00:00Z'),
+        dateEnd: new Date('2026-03-15T07:00:00Z'),
+        year: 2026,
         sessionKey: 'latest'
     };
 }
@@ -326,9 +397,9 @@ export async function fetchDriverInfo(driverNumber) {
         }
 
         const driver = drivers[0];
-        // Use higher quality image from F1 CDN - try both 2024 and 2025 formats
+        // Use higher quality image from F1 CDN - try current season format
         const acronym = driver.name_acronym?.toUpperCase();
-        const highResHeadshot = driver.headshot_url || `https://media.formula1.com/image/upload/f_auto,c_limit,w_1440,q_auto/content/dam/fom-website/drivers/2024Drivers/${acronym}.jpg`;
+        const highResHeadshot = driver.headshot_url || `https://media.formula1.com/image/upload/f_auto,c_limit,w_1440,q_auto/content/dam/fom-website/drivers/2025Drivers/${acronym}.jpg`;
 
         return {
             fullName: driver.full_name,
@@ -356,7 +427,7 @@ export async function fetchCurrentDrivers() {
     }
 
     try {
-        const response = await fetch(`${OPENF1_API}/drivers?session_key=latest`);
+        const response = await fetchWithTimeout(`${OPENF1_API}/drivers?session_key=latest`, {}, 10000);
 
         if (!response.ok) {
             // If rate limited, return cached or empty
@@ -532,7 +603,7 @@ export async function fetchConstructorStandings() {
     try {
         // Use backend API to get 2025 standings with actual and predicted points
         console.log('fetchConstructorStandings: Calling', `${API_BASE_URL}/api/constructor-standings`);
-        const response = await fetch(`${API_BASE_URL}/api/constructor-standings`);
+        const response = await fetchWithTimeout(`${API_BASE_URL}/api/constructor-standings`, {}, 10000);
 
         console.log('fetchConstructorStandings: Response status', response.status);
         if (!response.ok) {
@@ -680,6 +751,7 @@ export default {
     getQualifying,
     fetchAndPredict,
     fetchRaceHistory,
+    fetchSeasonReview,
     fetchNextRace,
     fetchDriverInfo,
     fetchCurrentDrivers,

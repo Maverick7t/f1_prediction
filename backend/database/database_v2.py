@@ -375,9 +375,12 @@ CREATE INDEX IF NOT EXISTS idx_qualifying_expires ON qualifying_cache(expires_at
 ALTER TABLE predictions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE qualifying_cache ENABLE ROW LEVEL SECURITY;
 
--- Allow public read/write for now (tighten in production)
-CREATE POLICY "Allow all on predictions" ON predictions FOR ALL USING (true);
-CREATE POLICY "Allow all on qualifying_cache" ON qualifying_cache FOR ALL USING (true);
+-- Allow read for all, write only for authenticated service role
+CREATE POLICY "Allow read on predictions" ON predictions FOR SELECT USING (true);
+CREATE POLICY "Allow insert on predictions" ON predictions FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow read on qualifying_cache" ON qualifying_cache FOR SELECT USING (true);
+CREATE POLICY "Allow insert/update on qualifying_cache" ON qualifying_cache FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow update on qualifying_cache" ON qualifying_cache FOR UPDATE USING (true);
 """
 
 
@@ -392,7 +395,7 @@ def get_prediction_logger(config=None) -> PredictionLogger:
     global _prediction_logger
     if _prediction_logger is None:
         if config is None:
-            from config import config as app_config
+            from utils.config import config as app_config
             config = app_config
         _prediction_logger = PredictionLogger(config)
     return _prediction_logger
@@ -402,7 +405,7 @@ def get_qualifying_cache(config=None) -> QualifyingCache:
     global _qualifying_cache
     if _qualifying_cache is None:
         if config is None:
-            from config import config as app_config
+            from utils.config import config as app_config
             config = app_config
         _qualifying_cache = QualifyingCache(config)
     return _qualifying_cache

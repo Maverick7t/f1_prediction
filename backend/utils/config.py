@@ -48,7 +48,7 @@ class Config:
     # ==========================================================================
     # DATA PATHS
     # ==========================================================================
-    DATA_PATH = get_path("DATA_PATH", "./f1_training_dataset_2018_2024.csv")
+    DATA_PATH = get_path("DATA_PATH", "./data/training/f1_training_dataset_2018_2025.parquet")
     
     # Model directory and files
     MODEL_DIR = get_path("MODEL_DIR", "./models_spencer")
