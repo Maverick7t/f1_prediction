@@ -26,7 +26,7 @@ requests==2.32.3
 
 # MLOps
 mlflow==2.9.1
-pyarrow>=15.0.0  # Version with Python 3.13 wheel support
+pyarrow==14.0.2  # Compatible with mlflow 2.9.1, has Python 3.13 wheels
 
 # Configuration
 python-dotenv==1.0.1
