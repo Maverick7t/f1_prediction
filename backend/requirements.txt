@@ -2,6 +2,10 @@
 # F1 Prediction API - Python Dependencies
 # =============================================================================
 
+# Build Tools (required for source builds on Render)
+setuptools>=68.0.0
+wheel>=0.40.0
+
 # Web Framework
 flask==3.0.0
 flask-cors==4.0.0
