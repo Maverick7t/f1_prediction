@@ -1,4 +1,0 @@
-# Procfile for Render deployment
-# Defines how to run the application in production
-
-web: gunicorn --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 600 app.wsgi:app
