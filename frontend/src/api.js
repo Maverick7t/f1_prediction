@@ -17,7 +17,7 @@ function isCacheValid() {
 /**
  * Fetch with timeout to prevent hanging requests
  */
-function fetchWithTimeout(url, options = {}, timeoutMs = 30000) {
+function fetchWithTimeout(url, options = {}, timeoutMs = 60000) {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeoutMs);
     return fetch(url, { ...options, signal: controller.signal })
@@ -29,7 +29,7 @@ function fetchWithTimeout(url, options = {}, timeoutMs = 30000) {
  */
 export async function fetchRaceHistory() {
     try {
-        const response = await fetchWithTimeout(`${API_BASE_URL}/api/race-history`, {}, 10000);
+        const response = await fetchWithTimeout(`${API_BASE_URL}/api/race-history`, {}, 30000);
 
         if (!response.ok) {
             throw new Error(`API error: ${response.status}`);
@@ -58,7 +58,7 @@ export async function fetchSeasonReview(year = null) {
             ? `${API_BASE_URL}/api/season-review/${year}`
             : `${API_BASE_URL}/api/season-review`;
 
-        const response = await fetchWithTimeout(url, {}, 15000);
+        const response = await fetchWithTimeout(url, {}, 30000);
 
         if (!response.ok) {
             throw new Error(`API error: ${response.status}`);
@@ -150,7 +150,7 @@ export async function fetchAndPredict(raceMeta) {
  */
 export async function fetchSaoPauloPredictions() {
     try {
-        const response = await fetchWithTimeout(`${API_BASE_URL}/api/predict/sao-paulo`, {}, 45000);
+        const response = await fetchWithTimeout(`${API_BASE_URL}/api/predict/sao-paulo`, {}, 60000);
 
         if (!response.ok) {
             throw new Error(`API error: ${response.status}`);
@@ -326,7 +326,7 @@ export async function fetchNextRace() {
 
     try {
         // Use backend API to get 2025 data from FastF1
-        const response = await fetchWithTimeout(`${API_BASE_URL}/api/next-race`, {}, 10000);
+        const response = await fetchWithTimeout(`${API_BASE_URL}/api/next-race`, {}, 30000);
 
         if (!response.ok) {
             throw new Error(`Backend API error: ${response.status}`);
@@ -603,7 +603,7 @@ export async function fetchConstructorStandings() {
     try {
         // Use backend API to get 2025 standings with actual and predicted points
         console.log('fetchConstructorStandings: Calling', `${API_BASE_URL}/api/constructor-standings`);
-        const response = await fetchWithTimeout(`${API_BASE_URL}/api/constructor-standings`, {}, 10000);
+        const response = await fetchWithTimeout(`${API_BASE_URL}/api/constructor-standings`, {}, 30000);
 
         console.log('fetchConstructorStandings: Response status', response.status);
         if (!response.ok) {
