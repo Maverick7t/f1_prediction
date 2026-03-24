@@ -2,9 +2,9 @@
 F1 Prediction API Server
 Flask REST API to serve race predictions to the frontend
 
-VERSION: 2.1.0 (Optimized - Startup preload removed)
-DEPLOYED: 2025-12-05
-FIXES: Worker timeout issue, memory optimization, code cleanup
+VERSION: 2.1.1 (Dynamic year fix + Python 3.12 compatibility)
+DEPLOYED: 2026-03-24
+FIXES: Use current year instead of hardcoded 2025, Python 3.12.5 with pyarrow wheels
 """
 
 from flask import Flask, jsonify, request, send_file
