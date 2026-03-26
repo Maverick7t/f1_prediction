@@ -75,6 +75,13 @@ cp .env.example .env
 python -m app.api
 ```
 
+Alternatively, you can use the provided dev runner:
+
+```powershell
+cd backend
+python app/run_dev.py
+```
+
 ### Prediction Logs & Backfill
 
 Predictions are logged immediately after inference. If the race has not completed yet, the log row will have `actual=NULL` and `correct=NULL`.
@@ -178,7 +185,7 @@ npm run dev
 ## 🛠️ Tech Stack
 
 **Backend:**
-- Python 3.12
+- Python 3.12.5 (see `backend/runtime.txt`)
 - Flask + Gunicorn
 - XGBoost + scikit-learn
 - MLflow (experiment tracking)
