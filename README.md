@@ -154,6 +154,9 @@ npm run dev
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/` | GET | Health check |
+| `/api/health` | GET | Detailed health check |
+| `/api/prediction-accuracy` | GET | Accuracy stats from prediction logs |
+| `/api/prediction-history` | GET | Recent prediction log rows |
 | `/api/predict` | POST | Custom race prediction |
 | `/api/predict/sao-paulo` | GET | São Paulo GP prediction |
 | `/api/qualifying` | GET | Get qualifying data |
