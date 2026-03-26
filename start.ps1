@@ -50,7 +50,7 @@ Write-Host "[2/5] Starting Backend API Server..." -ForegroundColor Yellow
 Write-Host "Backend will run on http://localhost:5000" -ForegroundColor Green
 
 # Start backend in new window (using f1env)
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$backendDir'; .\f1env\Scripts\Activate.ps1; python api.py"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$backendDir'; .\f1env\Scripts\Activate.ps1; python -m app.api"
 
 # Wait for backend to start
 Write-Host "Waiting for backend to start..." -ForegroundColor Green

@@ -72,8 +72,27 @@ pip install -r requirements.txt
 cp .env.example .env
 
 # Start server
-python api.py
+python -m app.api
 ```
+
+### Prediction Logs & Backfill
+
+Predictions are logged immediately after inference. If the race has not completed yet, the log row will have `actual=NULL` and `correct=NULL`.
+
+To backfill the actual winner after a race completes:
+
+```bash
+POST /api/update-actual-winner
+{
+   "race_name": "Japanese Grand Prix",
+   "actual_winner": "VER",
+   "race_year": 2025
+}
+```
+
+Notes:
+- Prediction logging dedupes on `(race, race_year)` in Supabase mode (updates an existing row instead of inserting duplicates).
+- Next-race predictions only log when qualifying data is for that exact race (to avoid mismatched cached qualifying).
 
 #### Frontend Setup
 
@@ -142,6 +161,7 @@ npm run dev
 | `/api/driver-standings` | GET | Driver standings |
 | `/api/constructor-standings` | GET | Constructor standings |
 | `/api/race-history` | GET | Recent race history |
+| `/api/update-actual-winner` | POST | Backfill `actual` + `correct` for a race |
 | `/api/model-registry` | GET | MLflow model info |
 | `/api/model-metrics` | GET | Prediction accuracy |
 
@@ -155,7 +175,7 @@ npm run dev
 ## 🛠️ Tech Stack
 
 **Backend:**
-- Python 3.11
+- Python 3.12
 - Flask + Gunicorn
 - XGBoost + scikit-learn
 - MLflow (experiment tracking)

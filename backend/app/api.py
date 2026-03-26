@@ -1054,6 +1054,7 @@ def update_actual_winner():
         data = request.json or {}
         race_name = data.get('race_name')
         actual_winner = data.get('actual_winner')
+        race_year = data.get('race_year')
         
         if not race_name or not actual_winner:
             return jsonify({
@@ -1061,7 +1062,7 @@ def update_actual_winner():
                 "error": "Both race_name and actual_winner are required"
             }), 400
         
-        success = prediction_logger.update_actual_winner(race_name, actual_winner)
+        success = prediction_logger.update_actual_winner(race_name, actual_winner, race_year=race_year)
         
         return jsonify({
             "success": success,
@@ -1142,7 +1143,10 @@ def predict():
                 race_name=data["event"],
                 predicted_winner=predictions["winner_prediction"]["driver"],
                 confidence=predictions["winner_prediction"]["percentage"],
-                model_version="xgb_v3"
+                model_version="xgb_v3",
+                race_year=data.get("race_year"),
+                circuit=data.get("circuit"),
+                full_predictions=predictions.get("full_predictions")
             )
             logger.info(f"✓ Prediction logged for {data['event']}")
         except Exception as log_err:
@@ -1248,7 +1252,7 @@ def get_races_with_predictions_and_history():
                     break
                 
                 race_name = event.get('EventName') or event.get('Event') or 'Unknown'
-                race_year = int(event.get('Year') or event.get('year') or 2025)
+                race_year = int(event.get('Year') or event.get('year') or year)
                 race_round = int(event.get('RoundNumber') or event.get('round') or 1)
                 race_date = event.get('EventDate')
                 race_key = f"{race_year}_{race_round}_{race_name.replace(' ', '_')}"
@@ -1394,7 +1398,7 @@ def get_next_race_prediction():
         
         next_event = future_races.iloc[0]
         race_name = next_event.get('EventName') or next_event.get('Event') or 'Unknown'
-        race_year = int(next_event.get('Year') or next_event.get('year') or 2025)
+        race_year = int(next_event.get('Year') or next_event.get('year') or year)
         race_round = int(next_event.get('RoundNumber') or next_event.get('round') or 1)
         race_date = next_event.get('EventDate')
         race_key = f"{race_year}_{race_round}_{race_name.replace(' ', '_')}"
@@ -1404,12 +1408,15 @@ def get_next_race_prediction():
         # Get qualifying data (from MEMORY cache first - no HTTP calls!)
         qual_data = None
         
+        qual_from_exact_race = False
+
         try:
             # Use QualifyingCache instead of Supabase queries
             qual_cache = get_qualifying_cache()
             cached_qual = qual_cache.get_cached_qualifying(race_key)
             
             if cached_qual:
+                qual_from_exact_race = True
                 if isinstance(cached_qual, str):
                     qual_data = json.loads(cached_qual)
                 else:
@@ -1473,13 +1480,19 @@ def get_next_race_prediction():
                 
                 # Log prediction to database
                 try:
-                    prediction_logger.log_prediction(
-                        race_name=race_name,
-                        predicted_winner=prediction_data['predicted_winner'],
-                        confidence=prediction_data['predicted_confidence'],
-                        model_version="xgb_v3"
-                    )
-                    logger.info(f"  ✓ Prediction logged to database")
+                    if qual_from_exact_race:
+                        prediction_logger.log_prediction(
+                            race_name=race_name,
+                            predicted_winner=prediction_data['predicted_winner'],
+                            confidence=prediction_data['predicted_confidence'],
+                            model_version="xgb_v3",
+                            race_year=race_year,
+                            circuit=race_name,
+                            full_predictions=prediction_data.get("full_predictions")
+                        )
+                        logger.info(f"  ✓ Prediction logged to database")
+                    else:
+                        logger.info("  Skipping prediction logging (qualifying data is from a different race)")
                 except Exception as log_err:
                     logger.warning(f"  Could not log prediction to database: {log_err}")
                 
@@ -2267,10 +2280,11 @@ def get_latest_race_circuit_data():
 @app.route("/api/race-history", methods=["GET", "OPTIONS"])
 def race_history():
     """
-    Get last 5 completed races with:
-    1. Qualifying data from Supabase cache (instant)
-    2. Model predictions based on qualifying
-    3. Actual winners (from training data for historical races)
+    Get up to 5 latest races with predictions vs actual results.
+
+    Source of truth:
+    - Supabase `predictions` table when configured
+    - local `monitoring/predictions.csv` fallback
     """
     # Handle CORS preflight (Flask-CORS handles this automatically)
     if request.method == "OPTIONS":
@@ -2289,135 +2303,110 @@ def race_history():
                 "source": "memory_cache"
             })
         
-        logger.info("Fetching race history from Supabase cache...")
-        
+        logger.info("Fetching race history from prediction logs...")
+
+        max_races = 5
+        lookback_rows = 250
+
+        def _as_bool(value):
+            if pd.isna(value):
+                return None
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, (int, float)):
+                return bool(int(value))
+            s = str(value).strip().lower()
+            if s in {"true", "t", "1", "yes", "y"}:
+                return True
+            if s in {"false", "f", "0", "no", "n"}:
+                return False
+            return None
+
         races = []
-        
-        # Get latest qualifying cache from Supabase
         try:
-            # Use the QualifyingCache instance from database_v2
-            qual_cache_instance = get_qualifying_cache(config)
-            cached_qualifying = qual_cache_instance.get_latest_cached_qualifying()
-            
-            if cached_qualifying is None:
-                logger.warning("No qualifying data in Supabase cache")
+            df = prediction_logger.get_prediction_history(limit=lookback_rows)
+
+            if df is None or df.empty:
                 return jsonify({
                     "success": True,
                     "data": [],
                     "source": "empty",
-                    "message": "No qualifying data cached yet"
+                    "message": "No prediction history available yet"
                 })
-            
-            # cached_qualifying is the JSON/dict of qualifying data
-            if isinstance(cached_qualifying, str):
-                qualifying_data = json.loads(cached_qualifying)
-            else:
-                qualifying_data = cached_qualifying
-            
-            # Extract race info from the cache or use latest
-            race_name = "Latest Qualifying"  # Default name
-            race_year = datetime.now().year
-            race_date = datetime.now().strftime('%Y-%m-%d')
-            
-            logger.info(f"Cached qualifying type: {type(qualifying_data)}, is list: {isinstance(qualifying_data, list)}")
-            if isinstance(qualifying_data, list) and len(qualifying_data) > 0:
-                logger.info(f"Using cached qualifying with {len(qualifying_data)} drivers")
-                logger.info(f"First driver keys: {list(qualifying_data[0].keys())}")
-                
-                # Extract driver code from different possible field names
-                for driver_entry in qualifying_data:
-                    # Map field names
-                    if 'code' in driver_entry and 'name' not in driver_entry:
-                        # Rename to match model expectations
-                        driver_entry['driver'] = driver_entry.pop('code')
-                    if 'name' in driver_entry and 'team' not in driver_entry:
-                        driver_entry['team'] = driver_entry.get('team', 'Unknown')
-                
-                # Try to get actual winner from FastF1 (but with timeout fallback)
-                actual_winner = "TBA"
+
+            # Normalize column names across possible sources
+            rename_map = {
+                "race_name": "race",
+                "predicted_winner": "predicted",
+                "actual_winner": "actual",
+                "is_correct": "correct",
+                "predicted_confidence": "confidence",
+            }
+            df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
+
+            required_cols = {"race", "predicted", "timestamp"}
+            if not required_cols.issubset(set(df.columns)):
+                logger.warning(f"Prediction history missing required cols: {sorted(required_cols - set(df.columns))}")
+                return jsonify({
+                    "success": True,
+                    "data": [],
+                    "source": "empty",
+                    "message": "Prediction history schema mismatch"
+                })
+
+            # Only include rows where actual winner is known (so UI shows predicted vs actual)
+            if "actual" in df.columns:
+                df = df[df["actual"].notna()]
+                df = df[df["actual"].astype(str).str.strip().str.upper().ne("TBA")]
+
+            df["timestamp_dt"] = pd.to_datetime(df["timestamp"], errors="coerce")
+            df = df.sort_values("timestamp_dt", ascending=False)
+
+            # Distinct races (keep latest prediction row per race)
+            df = df.drop_duplicates(subset=["race"], keep="first").head(max_races)
+
+            for _, row in df.iterrows():
+                race_name = str(row.get("race") or "").strip()
+                predicted = str(row.get("predicted") or "N/A").strip()
+                actual = str(row.get("actual") or "N/A").strip() if "actual" in row else "N/A"
+
+                confidence_val = row.get("confidence") if "confidence" in row else 0
                 try:
-                    actual_winner = get_race_winner_from_fastf1(race_year, race_name)
-                except Exception as e:
-                    logger.warning(f"Could not fetch race winner from FastF1: {e}")
-                
-                # If not found in FastF1, try training data
-                if actual_winner is None:
-                    actual_winner = "TBA"
-                
-                # Run model prediction using qualifying data
-                predicted_winner = "N/A"
-                predicted_confidence = 0
-                is_correct = False
-                
-                try:
-                    # Create DataFrame from qualifying data - handle both formats
-                    if isinstance(qualifying_data[0], dict) and 'telemetry' in qualifying_data[0]:
-                        # Format: [{"driver": "VER", "telemetry": [...], ...}, ...]
-                        qual_df = pd.DataFrame([
-                            {
-                                'driver': d.get('driver'),
-                                'team': d.get('team', 'Unknown'),
-                                'qualifying_position': d.get('qualifying_position', i+1)
-                            }
-                            for i, d in enumerate(qualifying_data)
-                        ])
-                    elif 'code' in qualifying_data[0]:
-                        # New format from cached telemetry
-                        qual_df = pd.DataFrame([
-                            {
-                                'driver': d.get('code'),
-                                'team': d.get('team', 'Unknown'),
-                                'qualifying_position': d.get('qualifying_position', i+1)
-                            }
-                            for i, d in enumerate(qualifying_data)
-                        ])
-                    else:
-                        # Format: [{"driver": "VER", "team": "...", "qualifying_position": 1}, ...]
-                        qual_df = pd.DataFrame(qualifying_data)
-                    
-                    logger.info(f"qual_df shape: {qual_df.shape}, columns: {list(qual_df.columns)}")
-                    race_key = f"{race_year}_Latest"
-                    
-                    # Run model prediction
-                    predictions = infer_from_qualifying(
-                        qual_df,
-                        race_key,
-                        race_year,
-                        race_name,
-                        race_name
-                    )
-                    
-                    predicted_winner = predictions.get("winner_prediction", {}).get("driver", "N/A")
-                    predicted_confidence = int(predictions.get("winner_prediction", {}).get("percentage", 0))
-                    
-                    # Check if prediction matches actual winner
-                    if actual_winner != "TBA" and predicted_winner != "N/A":
-                        is_correct = (predicted_winner.lower() == str(actual_winner).lower())
-                    
-                    logger.info(f"✓ Prediction: {predicted_winner} ({predicted_confidence}%) | Actual: {actual_winner} | Match: {is_correct}")
-                    
-                except Exception as e:
-                    logger.error(f"Prediction error: {e}")
-                    traceback.print_exc()
-                
+                    confidence = int(float(confidence_val)) if confidence_val is not None and str(confidence_val) != "nan" else 0
+                except Exception:
+                    confidence = 0
+
+                correct = _as_bool(row.get("correct")) if "correct" in row else None
+                if correct is None and actual not in {"", "N/A", "TBA"} and predicted not in {"", "N/A"}:
+                    correct = predicted.upper() == actual.upper()
+                if correct is None:
+                    correct = False
+
+                ts = row.get("timestamp_dt")
+                date_str = None
+                if pd.notna(ts):
+                    try:
+                        date_str = ts.strftime("%Y-%m-%d")
+                    except Exception:
+                        date_str = None
+                if not date_str:
+                    date_str = str(row.get("timestamp") or "")[:10] or datetime.now().strftime("%Y-%m-%d")
+
                 races.append({
-                    "race": race_name,
-                    "circuit": race_name,
-                    "predicted_winner": predicted_winner,
-                    "actual_winner": actual_winner,
-                    "correct": is_correct,
-                    "confidence": predicted_confidence,
-                    "date": race_date
+                    "race": race_name or "Unknown",
+                    "circuit": race_name or "Unknown",
+                    "predicted_winner": predicted,
+                    "actual_winner": actual,
+                    "correct": bool(correct),
+                    "confidence": confidence,
+                    "date": date_str,
                 })
-        
-        except ImportError:
-            logger.warning("database_v2 not available, using file cache fallback")
-            pass
+
         except Exception as e:
-            logger.error(f"Supabase cache error: {e}")
+            logger.error(f"Prediction log read error: {e}")
             traceback.print_exc()
-        
-        logger.info(f"Race history ready: {len(races)} race(s) with predictions")
+
+        logger.info(f"Race history ready: {len(races)} race(s) from prediction logs")
         
         # Save to memory cache for next request (short TTL)
         if races:
@@ -2427,7 +2416,7 @@ def race_history():
         return jsonify({
             "success": True,
             "data": races,
-            "source": "supabase_cache"
+            "source": f"predictions_{getattr(prediction_logger, 'mode', 'unknown')}"
         })
     
     except Exception as e:
