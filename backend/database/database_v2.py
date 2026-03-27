@@ -340,9 +340,12 @@ class QualifyingCache:
         """Initialize cache backend"""
         if self.config.USE_DATABASE and SUPABASE_AVAILABLE:
             try:
+                supabase_key = getattr(self.config, "SUPABASE_SERVICE_KEY", None) or getattr(self.config, "SUPABASE_KEY", None)
+                if not self.config.SUPABASE_URL or not supabase_key:
+                    raise ValueError("Missing SUPABASE_URL or SUPABASE_KEY/SUPABASE_SERVICE_KEY")
                 self.supabase = create_client(
                     self.config.SUPABASE_URL,
-                    self.config.SUPABASE_KEY
+                    supabase_key
                 )
                 self._mode = "supabase"
                 logger.info("✓ Using Supabase for qualifying cache")

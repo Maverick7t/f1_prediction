@@ -82,8 +82,13 @@ class Config:
     # ==========================================================================
     DATABASE_URL = os.getenv("DATABASE_URL")
     SUPABASE_URL = os.getenv("SUPABASE_URL")
-    SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-    SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+    # Support common Supabase naming patterns
+    SUPABASE_KEY = os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+    SUPABASE_SERVICE_KEY = (
+        os.getenv("SUPABASE_SERVICE_KEY")
+        or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        or os.getenv("SUPABASE_SERVICE_ROLE")
+    )
     
     @property
     def USE_DATABASE(self) -> bool:
@@ -93,7 +98,7 @@ class Config:
     @property
     def USE_SUPABASE(self) -> bool:
         """Check if Supabase is configured"""
-        return bool(self.SUPABASE_URL and self.SUPABASE_KEY)
+        return bool(self.SUPABASE_URL and (self.SUPABASE_SERVICE_KEY or self.SUPABASE_KEY))
     
     # ==========================================================================
     # REDIS CACHE (Optional - for production)
