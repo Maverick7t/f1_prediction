@@ -46,7 +46,8 @@ class PredictionLogger:
         """Initialize Supabase connection if configured"""
         if self.config.USE_SUPABASE and SUPABASE_AVAILABLE:
             try:
-                supabase_key = getattr(self.config, "SUPABASE_SERVICE_KEY", None) or getattr(self.config, "SUPABASE_KEY", None)
+                supabase_service_key = getattr(self.config, "SUPABASE_SERVICE_KEY", None)
+                supabase_key = supabase_service_key or getattr(self.config, "SUPABASE_KEY", None)
                 if not self.config.SUPABASE_URL or not supabase_key:
                     raise ValueError("Missing SUPABASE_URL or SUPABASE_KEY/SUPABASE_SERVICE_KEY")
                 self.supabase = create_client(
@@ -54,13 +55,38 @@ class PredictionLogger:
                     supabase_key
                 )
                 self._mode = "supabase"
-                logger.info("✓ Connected to Supabase for prediction logging")
+                logger.info(
+                    "✓ Connected to Supabase for prediction logging (%s key)",
+                    "service" if supabase_service_key else "anon",
+                )
             except Exception as e:
                 logger.warning(f"Supabase connection failed: {e}. Using local CSV.")
                 self._mode = "csv"
         else:
             self._mode = "csv"
             logger.info("✓ Using local CSV for prediction logging")
+
+    def _query_postgres(self, query: str, params: tuple = ()) -> List[Dict[str, Any]]:
+        """Query Supabase Postgres directly via DATABASE_URL (bypasses PostgREST/RLS issues).
+
+        Returns list of dict rows.
+        """
+        database_url = getattr(self.config, "DATABASE_URL", None)
+        if not database_url:
+            return []
+
+        try:
+            import psycopg2
+            from psycopg2.extras import RealDictCursor
+
+            with psycopg2.connect(database_url) as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute(query, params)
+                    rows = cur.fetchall() or []
+                    return [dict(r) for r in rows]
+        except Exception as e:
+            logger.warning(f"Postgres fallback query failed: {e}")
+            return []
     
     @property
     def mode(self) -> str:
@@ -198,19 +224,29 @@ class PredictionLogger:
 
     def get_latest_prediction(self, race_name: str, *, race_year: Optional[int] = None) -> Optional[Dict[str, Any]]:
         """Fetch the most recent prediction row for a race."""
-        if self._mode != "supabase":
-            return None
-        try:
-            q = self.supabase.table("predictions").select("*").eq("race", race_name)
-            if race_year is not None:
-                q = q.eq("race_year", int(race_year))
-            resp = q.order("timestamp", desc=True).limit(1).execute()
-            if resp.data:
-                return resp.data[0]
-            return None
-        except Exception as e:
-            logger.error(f"Failed to fetch latest prediction: {e}")
-            return None
+        # Prefer Supabase REST if available
+        if self._mode == "supabase":
+            try:
+                q = self.supabase.table("predictions").select("*").eq("race", race_name)
+                if race_year is not None:
+                    q = q.eq("race_year", int(race_year))
+                resp = q.order("timestamp", desc=True).limit(1).execute()
+                if resp.data:
+                    return resp.data[0]
+            except Exception as e:
+                logger.error(f"Failed to fetch latest prediction (Supabase REST): {e}")
+
+        # Fallback to direct Postgres
+        where_sql = "where race = %s"
+        params: List[Any] = [race_name]
+        if race_year is not None:
+            where_sql += " and race_year = %s"
+            params.append(int(race_year))
+        rows = self._query_postgres(
+            f"select * from public.predictions {where_sql} order by timestamp desc limit 1",
+            tuple(params),
+        )
+        return rows[0] if rows else None
 
     def get_most_recent_prediction(self) -> Optional[Dict[str, Any]]:
         """Fetch the most recent prediction row across all races.
@@ -238,21 +274,27 @@ class PredictionLogger:
 
     def get_predictions_missing_actual(self, *, limit: int = 200) -> List[Dict[str, Any]]:
         """Return prediction rows that have not been backfilled with actual winner yet."""
-        if self._mode != "supabase":
-            return []
-        try:
-            resp = (
-                self.supabase.table("predictions")
-                .select("id, timestamp, race, race_year, circuit, predicted")
-                .is_("actual", "null")
-                .order("timestamp", desc=True)
-                .limit(limit)
-                .execute()
-            )
-            return list(resp.data or [])
-        except Exception as e:
-            logger.error(f"Failed to fetch predictions missing actual: {e}")
-            return []
+        if self._mode == "supabase":
+            try:
+                resp = (
+                    self.supabase.table("predictions")
+                    .select("id, timestamp, race, race_year, circuit, predicted")
+                    .is_("actual", "null")
+                    .order("timestamp", desc=True)
+                    .limit(limit)
+                    .execute()
+                )
+                data = list(resp.data or [])
+                if data:
+                    return data
+            except Exception as e:
+                logger.error(f"Failed to fetch predictions missing actual (Supabase REST): {e}")
+
+        rows = self._query_postgres(
+            "select id, timestamp, race, race_year, circuit, predicted from public.predictions where actual is null order by timestamp desc limit %s",
+            (int(limit),),
+        )
+        return rows
     
     def get_prediction_history(self, limit: int = 100) -> pd.DataFrame:
         """Get prediction history for accuracy analysis"""
@@ -263,9 +305,30 @@ class PredictionLogger:
                     .order('timestamp', desc=True) \
                     .limit(limit) \
                     .execute()
-                return pd.DataFrame(response.data)
+                if response.data:
+                    return pd.DataFrame(response.data)
+
+                # RLS/anon-key often returns 200 + empty list. Try direct Postgres.
+                pg_rows = self._query_postgres(
+                    "select * from public.predictions order by timestamp desc limit %s",
+                    (int(limit),),
+                )
+                if pg_rows:
+                    logger.info("Using Postgres fallback for predictions history (RLS-safe)")
+                    return pd.DataFrame(pg_rows)
+
+                return pd.DataFrame()
             except Exception as e:
                 logger.error(f"Query failed: {e}")
+
+                # If Supabase REST call fails outright, still try Postgres.
+                pg_rows = self._query_postgres(
+                    "select * from public.predictions order by timestamp desc limit %s",
+                    (int(limit),),
+                )
+                if pg_rows:
+                    logger.info("Using Postgres fallback for predictions history")
+                    return pd.DataFrame(pg_rows)
         
         # Fallback to CSV
         log_path = Path("monitoring/predictions.csv")
