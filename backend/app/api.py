@@ -1411,10 +1411,23 @@ def get_next_race_prediction():
             race_round = None
 
         row = None
+        is_fallback = False
         try:
             row = prediction_logger.get_latest_prediction(race_name, race_year=race_year)
         except Exception:
             row = None
+
+        # Fallback: if we don't have a prediction for the upcoming race yet,
+        # keep showing the most recent available prediction until the next
+        # qualifying session/prediction is logged.
+        if not (row and row.get("predicted")):
+            try:
+                fallback_row = prediction_logger.get_latest_prediction_any(race_year=race_year)
+            except Exception:
+                fallback_row = None
+            if fallback_row and fallback_row.get("predicted"):
+                row = fallback_row
+                is_fallback = True
 
         predicted_winner = "TBA"
         predicted_confidence = 0
@@ -1465,6 +1478,7 @@ def get_next_race_prediction():
             "predicted_top3": predicted_top3,
             "full_predictions": full_predictions,
             "status": status,
+            "is_fallback": is_fallback,
         }
 
     except Exception as e:

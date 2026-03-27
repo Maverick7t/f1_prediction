@@ -212,6 +212,26 @@ class PredictionLogger:
             logger.error(f"Failed to fetch latest prediction: {e}")
             return None
 
+    def get_latest_prediction_any(self, *, race_year: Optional[int] = None, limit: int = 10) -> Optional[Dict[str, Any]]:
+        """Fetch the most recent prediction row across races (best-effort).
+
+        Used as a UI fallback when the upcoming race has no logged prediction yet.
+        """
+        if self._mode != "supabase":
+            return None
+        try:
+            q = self.supabase.table("predictions").select("*")
+            if race_year is not None:
+                q = q.eq("race_year", int(race_year))
+            resp = q.order("timestamp", desc=True).limit(int(limit)).execute()
+            for row in (resp.data or []):
+                if row and row.get("predicted"):
+                    return row
+            return None
+        except Exception as e:
+            logger.error(f"Failed to fetch latest prediction (any): {e}")
+            return None
+
     def get_predictions_missing_actual(self, *, limit: int = 200) -> List[Dict[str, Any]]:
         """Return prediction rows that have not been backfilled with actual winner yet."""
         if self._mode != "supabase":
