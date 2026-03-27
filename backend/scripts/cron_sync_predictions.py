@@ -12,7 +12,7 @@ import pandas as pd
 import fastf1
 
 from utils.config import config
-from database.database_v2 import get_prediction_logger
+from database.database_v2 import get_prediction_logger, get_qualifying_cache
 
 # Reuse existing inference + Ergast qualifying fetch.
 from app.api import (
@@ -97,10 +97,41 @@ def main() -> int:
 
     logger.info(f"[cron] Next race: {race_name} ({race_year})")
 
-    qualifying = fetch_qualifying_from_ergast(race_year, circuit=circuit, event=race_name)
+    qualifying = None
+
+    # 1) Supabase qualifying_cache first
+    try:
+        qual_cache = get_qualifying_cache(config)
+        cached = qual_cache.get_cached_qualifying(race_key)
+        if cached:
+            qualifying = cached
+            logger.info(f"[cron] Using cached qualifying from Supabase for {race_key}")
+    except Exception as e:
+        logger.info(f"[cron] qualifying_cache lookup failed: {e}")
+
+    # 2) Ergast fallback
     if not qualifying:
-        logger.info("[cron] Qualifying not available yet on Ergast; skipping prediction.")
+        qualifying = fetch_qualifying_from_ergast(race_year, circuit=circuit, event=race_name)
+        if qualifying:
+            logger.info("[cron] Using qualifying from Ergast")
+
+    if not qualifying:
+        logger.info("[cron] Qualifying not available yet (cache+Ergast); skipping prediction.")
         return 0
+
+    # Normalize fields for inference
+    if isinstance(qualifying, list):
+        normalized = []
+        for row in qualifying:
+            if not isinstance(row, dict):
+                continue
+            r = dict(row)
+            if "qualifying_position" not in r and "position" in r:
+                r["qualifying_position"] = r.get("position")
+            if "driver" not in r and "code" in r:
+                r["driver"] = r.get("code")
+            normalized.append(r)
+        qualifying = normalized
 
     qual_df = pd.DataFrame(qualifying)
     predictions = infer_from_qualifying(qual_df, race_key, race_year, race_name, circuit)
