@@ -1411,23 +1411,50 @@ def get_next_race_prediction():
             race_round = None
 
         row = None
-        is_fallback = False
         try:
             row = prediction_logger.get_latest_prediction(race_name, race_year=race_year)
         except Exception:
             row = None
 
-        # Fallback: if we don't have a prediction for the upcoming race yet,
-        # keep showing the most recent available prediction until the next
-        # qualifying session/prediction is logged.
+        # If we don't have a prediction yet for the upcoming race,
+        # keep showing the most recent stored prediction until new qualifying arrives.
         if not (row and row.get("predicted")):
             try:
-                fallback_row = prediction_logger.get_latest_prediction_any(race_year=race_year)
+                fallback = prediction_logger.get_most_recent_prediction()
             except Exception:
-                fallback_row = None
-            if fallback_row and fallback_row.get("predicted"):
-                row = fallback_row
-                is_fallback = True
+                fallback = None
+
+            if fallback and fallback.get("predicted"):
+                row = fallback
+
+                # Override display metadata to match the fallback row (avoid mixing race labels).
+                race_name = fallback.get("race") or race_name
+                circuit = fallback.get("circuit") or circuit
+                try:
+                    if fallback.get("race_year") is not None:
+                        race_year = int(fallback.get("race_year"))
+                except Exception:
+                    pass
+
+                # Best-effort: round/date from stored full_predictions if present.
+                fp_raw = fallback.get("full_predictions")
+                if isinstance(fp_raw, str):
+                    try:
+                        fp_raw = json.loads(fp_raw)
+                    except Exception:
+                        fp_raw = None
+                if isinstance(fp_raw, dict):
+                    try:
+                        if fp_raw.get("round") is not None:
+                            race_round = int(fp_raw.get("round"))
+                    except Exception:
+                        pass
+                    if fp_raw.get("date"):
+                        race_date = fp_raw.get("date")
+                else:
+                    # Fall back to the stored timestamp if we don't have a dedicated date.
+                    if fallback.get("timestamp"):
+                        race_date = str(fallback.get("timestamp"))
 
         predicted_winner = "TBA"
         predicted_confidence = 0
@@ -1453,6 +1480,15 @@ def get_next_race_prediction():
                     fp = None
 
             if isinstance(fp, dict):
+                # Use stored metadata when available
+                try:
+                    if fp.get("round") is not None:
+                        race_round = int(fp.get("round"))
+                except Exception:
+                    pass
+                if fp.get("date"):
+                    race_date = fp.get("date")
+
                 t3 = fp.get("top3_prediction") or []
                 if isinstance(t3, list):
                     predicted_top3 = [d.get("driver") for d in t3 if isinstance(d, dict) and d.get("driver")][:3]
@@ -1478,7 +1514,6 @@ def get_next_race_prediction():
             "predicted_top3": predicted_top3,
             "full_predictions": full_predictions,
             "status": status,
-            "is_fallback": is_fallback,
         }
 
     except Exception as e:

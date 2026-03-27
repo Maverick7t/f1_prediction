@@ -212,24 +212,28 @@ class PredictionLogger:
             logger.error(f"Failed to fetch latest prediction: {e}")
             return None
 
-    def get_latest_prediction_any(self, *, race_year: Optional[int] = None, limit: int = 10) -> Optional[Dict[str, Any]]:
-        """Fetch the most recent prediction row across races (best-effort).
+    def get_most_recent_prediction(self) -> Optional[Dict[str, Any]]:
+        """Fetch the most recent prediction row across all races.
 
-        Used as a UI fallback when the upcoming race has no logged prediction yet.
+        Works in both Supabase and CSV mode.
         """
-        if self._mode != "supabase":
-            return None
         try:
-            q = self.supabase.table("predictions").select("*")
-            if race_year is not None:
-                q = q.eq("race_year", int(race_year))
-            resp = q.order("timestamp", desc=True).limit(int(limit)).execute()
-            for row in (resp.data or []):
-                if row and row.get("predicted"):
-                    return row
-            return None
+            df = self.get_prediction_history(limit=1)
+            if df is None or df.empty:
+                return None
+
+            row = df.iloc[0].to_dict()
+
+            # Normalize pandas NaN/NaT to None
+            for key, value in list(row.items()):
+                try:
+                    if pd.isna(value):
+                        row[key] = None
+                except Exception:
+                    pass
+            return row
         except Exception as e:
-            logger.error(f"Failed to fetch latest prediction (any): {e}")
+            logger.error(f"Failed to fetch most recent prediction: {e}")
             return None
 
     def get_predictions_missing_actual(self, *, limit: int = 200) -> List[Dict[str, Any]]:
