@@ -86,6 +86,7 @@ build/
 
 # Monitoring logs
 monitoring/predictions.csv
+backend/monitoring/
 backend/monitoring/predictions.csv
 
 # Temporary files

@@ -44,11 +44,14 @@ class PredictionLogger:
     
     def _initialize(self):
         """Initialize Supabase connection if configured"""
-        if self.config.USE_DATABASE and SUPABASE_AVAILABLE:
+        if self.config.USE_SUPABASE and SUPABASE_AVAILABLE:
             try:
+                supabase_key = getattr(self.config, "SUPABASE_SERVICE_KEY", None) or getattr(self.config, "SUPABASE_KEY", None)
+                if not self.config.SUPABASE_URL or not supabase_key:
+                    raise ValueError("Missing SUPABASE_URL or SUPABASE_KEY/SUPABASE_SERVICE_KEY")
                 self.supabase = create_client(
                     self.config.SUPABASE_URL,
-                    self.config.SUPABASE_KEY
+                    supabase_key
                 )
                 self._mode = "supabase"
                 logger.info("✓ Connected to Supabase for prediction logging")
@@ -71,70 +74,62 @@ class PredictionLogger:
         self,
         race_name: str,
         predicted_winner: str,
-        actual_winner: str = None,
-        confidence: float = None,
+        *,
+        race_year: Optional[int] = None,
+        circuit: Optional[str] = None,
+        actual_winner: Optional[str] = None,
+        confidence: Optional[float] = None,
         model_version: str = "v3",
-        race_year: int = None,
-        circuit: str = None,
-        full_predictions: Any = None,
+        full_predictions: Optional[Any] = None,
+        allow_update: bool = True,
     ) -> bool:
         """Log a prediction for tracking accuracy.
 
-        In Supabase mode, if a row already exists for (race, race_year), we update it
-        instead of inserting duplicates (especially important because some endpoints
-        are hit repeatedly).
+        In Supabase mode this is idempotent-ish: if a row for (race, race_year)
+        exists and is missing actuals, update it instead of inserting a duplicate.
         """
         timestamp = datetime.now().isoformat()
 
         # Match schema.sql column names
         prediction: Dict[str, Any] = {
-            'timestamp': timestamp,
-            'race': race_name,
-            'race_year': race_year,
-            'circuit': circuit,
-            'predicted': predicted_winner,
-            'confidence': confidence,
-            'model_version': model_version,
-            'actual': actual_winner,
-            'correct': predicted_winner == actual_winner if actual_winner else None,
-            'full_predictions': full_predictions,
+            "timestamp": timestamp,
+            "race": race_name,
+            "race_year": int(race_year) if race_year is not None else None,
+            "circuit": circuit,
+            "predicted": predicted_winner,
+            "confidence": confidence,
+            "model_version": model_version,
+            "actual": actual_winner,
+            "correct": (predicted_winner == actual_winner) if actual_winner else None,
+            "full_predictions": full_predictions,
         }
-
-        # Remove keys with None so we don't overwrite existing data with NULL on update
-        prediction_non_null = {k: v for k, v in prediction.items() if v is not None}
 
         if self._mode == "supabase":
             try:
-                # If we have a year, dedupe on (race, race_year)
-                if race_year is not None:
-                    existing = (
-                        self.supabase.table('predictions')
-                        .select('id,actual')
-                        .eq('race', race_name)
-                        .eq('race_year', int(race_year))
-                        .order('timestamp', desc=True)
+                # If we have a race_year, try to update an existing incomplete row first.
+                existing_row = None
+                if allow_update and race_year is not None:
+                    resp = (
+                        self.supabase.table("predictions")
+                        .select("id, actual, correct")
+                        .eq("race", race_name)
+                        .eq("race_year", int(race_year))
+                        .order("timestamp", desc=True)
                         .limit(1)
                         .execute()
                     )
-                    if existing.data:
-                        row = existing.data[0]
-                        row_id = row.get('id')
-                        existing_actual = row.get('actual')
+                    if resp.data:
+                        existing_row = resp.data[0]
 
-                        # If the race already has an actual winner logged and the caller
-                        # isn't providing a new actual_winner, avoid rewriting history.
-                        if existing_actual not in (None, "", "TBA") and actual_winner is None:
-                            logger.debug("Prediction already completed; skipping log")
-                            return True
+                if existing_row and (existing_row.get("actual") in (None, "") or existing_row.get("correct") is None):
+                    row_id = existing_row.get("id")
+                    if row_id:
+                        self.supabase.table("predictions").update(prediction).eq("id", row_id).execute()
+                        logger.debug("✓ Updated existing prediction row in Supabase")
+                        return True
 
-                        if row_id:
-                            self.supabase.table('predictions').update(prediction_non_null).eq('id', row_id).execute()
-                            logger.debug("✓ Updated existing prediction row in Supabase")
-                            return True
-
-                # Default behavior: insert
-                self.supabase.table('predictions').insert(prediction_non_null).execute()
-                logger.debug("✓ Logged prediction to Supabase")
+                self.supabase.table("predictions").insert(prediction).execute()
+                logger.debug("✓ Inserted prediction row to Supabase")
                 return True
             except Exception as e:
                 logger.error(f"Supabase insert/update failed: {e}")
@@ -147,11 +142,6 @@ class PredictionLogger:
         try:
             log_path = Path("monitoring/predictions.csv")
             log_path.parent.mkdir(exist_ok=True)
-
-            # Ensure JSON-like fields can be stored in CSV
-            if isinstance(prediction.get('full_predictions'), (dict, list)):
-                prediction = dict(prediction)
-                prediction['full_predictions'] = json.dumps(prediction['full_predictions'])
             
             df = pd.DataFrame([prediction])
             if log_path.exists():
@@ -164,29 +154,38 @@ class PredictionLogger:
             logger.error(f"CSV logging failed: {e}")
             return False
     
-    def update_actual_winner(self, race_name: str, actual_winner: str, race_year: int = None) -> bool:
-        """Update prediction with actual winner after race completes"""
+    def update_actual_winner(self, race_name: str, actual_winner: str, *, race_year: Optional[int] = None) -> bool:
+        """Update prediction(s) with actual winner after race completes."""
         if self._mode == "supabase":
             try:
-                base = self.supabase.table('predictions').eq('race', race_name)
+                # Update rows with missing actual.
+                q = (
+                    self.supabase.table("predictions")
+                    .update({"actual": actual_winner, "correct": None})
+                    .eq("race", race_name)
+                    .is_("actual", "null")
+                )
                 if race_year is not None:
-                    base = base.eq('race_year', int(race_year))
-
-                # Update actual winner where missing (NULL)
-                base.update({'actual': actual_winner, 'correct': None}).is_('actual', 'null').execute()
-
-                # Update actual winner where missing (empty string)
-                base.update({'actual': actual_winner, 'correct': None}).eq('actual', '').execute()
+                    q = q.eq("race_year", int(race_year))
+                q.execute()
                 
                 # Update correct flag where predicted matches actual
-                correct_base = self.supabase.table('predictions').eq('race', race_name)
+                q_true = self.supabase.table("predictions").update({"correct": True}).eq("race", race_name).eq("predicted", actual_winner)
                 if race_year is not None:
-                    correct_base = correct_base.eq('race_year', int(race_year))
-
-                correct_base.update({'correct': True}).eq('predicted', actual_winner).execute()
+                    q_true = q_true.eq("race_year", int(race_year))
+                q_true.execute()
                 
                 # Update correct flag where predicted doesn't match actual
-                correct_base.update({'correct': False}).neq('predicted', actual_winner).is_('correct', 'null').execute()
+                q_false = (
+                    self.supabase.table("predictions")
+                    .update({"correct": False})
+                    .eq("race", race_name)
+                    .neq("predicted", actual_winner)
+                    .is_("correct", "null")
+                )
+                if race_year is not None:
+                    q_false = q_false.eq("race_year", int(race_year))
+                q_false.execute()
                 
                 return True
             except Exception as e:
@@ -196,6 +195,40 @@ class PredictionLogger:
         # CSV mode: would need to read, update, write
         logger.warning("Cannot update actual winner in CSV mode")
         return False
+
+    def get_latest_prediction(self, race_name: str, *, race_year: Optional[int] = None) -> Optional[Dict[str, Any]]:
+        """Fetch the most recent prediction row for a race."""
+        if self._mode != "supabase":
+            return None
+        try:
+            q = self.supabase.table("predictions").select("*").eq("race", race_name)
+            if race_year is not None:
+                q = q.eq("race_year", int(race_year))
+            resp = q.order("timestamp", desc=True).limit(1).execute()
+            if resp.data:
+                return resp.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"Failed to fetch latest prediction: {e}")
+            return None
+
+    def get_predictions_missing_actual(self, *, limit: int = 200) -> List[Dict[str, Any]]:
+        """Return prediction rows that have not been backfilled with actual winner yet."""
+        if self._mode != "supabase":
+            return []
+        try:
+            resp = (
+                self.supabase.table("predictions")
+                .select("id, timestamp, race, race_year, circuit, predicted")
+                .is_("actual", "null")
+                .order("timestamp", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            return list(resp.data or [])
+        except Exception as e:
+            logger.error(f"Failed to fetch predictions missing actual: {e}")
+            return []
     
     def get_prediction_history(self, limit: int = 100) -> pd.DataFrame:
         """Get prediction history for accuracy analysis"""

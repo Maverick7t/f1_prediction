@@ -32,3 +32,29 @@ services:
         value: ./f1_cache
       - key: LOG_LEVEL
         value: INFO
+
+  # Weekend prediction sync (runs only Sat/Sun every 3 hours)
+  - type: cron
+    name: f1-weekend-predictions
+    env: python
+    runtime: python-3.12.5
+    region: oregon
+    plan: free
+    branch: main
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    schedule: "0 */3 * * 6,0"
+    startCommand: python -m scripts.cron_sync_predictions
+
+  # Post-race actual backfill (runs Sun/Mon every 3 hours)
+  - type: cron
+    name: f1-actuals-backfill
+    env: python
+    runtime: python-3.12.5
+    region: oregon
+    plan: free
+    branch: main
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    schedule: "0 */3 * * 0,1"
+    startCommand: python -m scripts.cron_sync_actuals
