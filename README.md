@@ -101,6 +101,31 @@ Notes:
 - Prediction logging dedupes on `(race, race_year)` in Supabase mode (updates an existing row instead of inserting duplicates).
 - Next-race predictions only log when qualifying data is for that exact race (to avoid mismatched cached qualifying).
 
+## 🤖 Automated Pipeline (Lean Production)
+
+This repo supports a lean, fully-automated pipeline that avoids relying on local parquet files at inference time.
+
+**Supabase tables**
+- Create the pipeline tables by running [backend/database/schema_pipeline.sql](backend/database/schema_pipeline.sql) in the Supabase SQL editor:
+   - `qualifying_raw` (append-only-ish qualifying rows)
+   - `results_raw` (append-only-ish race result rows)
+   - `features_by_race` (precomputed per-driver features used for inference)
+
+**Jobs (scripts)**
+- After qualifying: [backend/scripts/post_qualifying.py](backend/scripts/post_qualifying.py)
+- After race: [backend/scripts/post_race.py](backend/scripts/post_race.py)
+- Optional retrain from Supabase: [backend/scripts/retrain_model.py](backend/scripts/retrain_model.py)
+
+**GitHub Actions**
+- Scheduled workflows:
+   - [.github/workflows/post_qualifying.yml](.github/workflows/post_qualifying.yml)
+   - [.github/workflows/post_race.yml](.github/workflows/post_race.yml)
+
+Required GitHub Secrets:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_KEY`
+- Optional: `MLFLOW_TRACKING_URI`, `MLFLOW_EXPERIMENT_NAME`
+
 #### Frontend Setup
 
 ```powershell

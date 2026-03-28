@@ -1,0 +1,52 @@
+name: Post Race
+
+on:
+  schedule:
+    # Every 30 minutes on Sunday (UTC)
+    - cron: '*/30 * * * 0'
+  workflow_dispatch:
+    inputs:
+      year:
+        description: 'Season year (optional)'
+        required: false
+      round:
+        description: 'Round number (optional)'
+        required: false
+      auto:
+        description: 'Auto-detect latest results (true/false)'
+        required: false
+        default: 'true'
+      retrain:
+        description: 'Trigger retrain (true/false)'
+        required: false
+        default: 'false'
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Run post_race job
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_EXPERIMENT_NAME: ${{ secrets.MLFLOW_EXPERIMENT_NAME }}
+        run: |
+          ARGS=""
+          if [ "${{ inputs.auto }}" = "true" ] || [ -z "${{ inputs.auto }}" ]; then ARGS="$ARGS --auto"; fi
+          if [ -n "${{ inputs.year }}" ]; then ARGS="$ARGS --year ${{ inputs.year }}"; fi
+          if [ -n "${{ inputs.round }}" ]; then ARGS="$ARGS --round ${{ inputs.round }}"; fi
+          if [ "${{ inputs.retrain }}" = "true" ]; then ARGS="$ARGS --retrain"; fi
+          python backend/scripts/post_race.py $ARGS

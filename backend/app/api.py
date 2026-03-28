@@ -987,171 +987,9 @@ def infer_from_qualifying(qual_df, race_key, race_year, event, circuit, skip_cac
     """
     import time
     start = time.time()
-    
-    # Step 1: Prepare qualifying data
-    q = qual_df.copy()
-    q["race_key"] = race_key
-    q["race_year"] = race_year
-    q["event"] = event
-    q["circuit"] = circuit
 
-    # Ensure columns used by feature computation exist (qualifying-only inference)
-    if 'event_date' not in q.columns:
-        q['event_date'] = pd.NaT
-    if 'finishing_position' not in q.columns:
-        q['finishing_position'] = np.nan
-    
-    # Ensure required columns exist
-    if "qualifying_position" not in q.columns and "qualifyingposition" not in q.columns:
-        q["qualifying_position"] = range(1, len(q) + 1)
-    
-    if "qualifying_position" not in q.columns:
-        q.rename(columns={"qualifyingposition": "qualifying_position"}, inplace=True)
-    
-    if "team" not in q.columns:
-        q["team"] = "Unknown"
+    race_rows = build_race_rows_from_qualifying(qual_df, race_key, race_year, event, circuit)
 
-    # Normalize labels BEFORE merging with history so feature computation can find matches.
-    try:
-        driver_classes = _encoder_classes(encoders.get("driver"))
-        team_classes = _encoder_classes(encoders.get("team"))
-        circuit_classes = _encoder_classes(encoders.get("circuit"))
-
-        if "driver" in q.columns:
-            q["driver"] = q["driver"].astype(str).map(lambda v: _normalize_driver_code(v, driver_classes))
-        if "team" in q.columns:
-            q["team"] = q["team"].astype(str).map(lambda v: _normalize_team_name(v, team_classes))
-        q["circuit"] = _normalize_circuit_label(circuit, event, circuit_classes)
-    except Exception as e:
-        logger.debug(f"[infer] Label normalization skipped: {e}")
-    
-    # Step 2: Merge with historical data if available.
-    # If historical data isn't available (common in slim deployments), fall back
-    # to FeatureStore snapshots so engineered features remain meaningful.
-    try:
-        hist_available = not (hist_data is None or len(getattr(hist_data, "columns", [])) == 0)
-        if not hist_available:
-            merged = q.copy()
-
-            # FeatureStore-backed engineered features (fast, no parquet dependency at runtime)
-            try:
-                merged["RecentFormAvg"] = 0.0
-                merged["CircuitHistoryAvg"] = 10.0
-                merged["DriverExperienceScore"] = 0.0
-                merged["TeamPerfScore"] = 0.5
-                merged["EloRating"] = 1500.0
-
-                for idx, row in merged.iterrows():
-                    driver_code = str(row.get("driver") or "").upper()
-                    team_name = str(row.get("team") or "Unknown")
-                    circuit_name = str(row.get("circuit") or "")
-
-                    d = feature_store.get_driver_features(driver_code) if driver_code else {}
-                    merged.at[idx, "RecentFormAvg"] = float(d.get("RecentFormAvg", 10.0) or 10.0)
-                    merged.at[idx, "DriverExperienceScore"] = float(d.get("DriverExperienceScore", 0.0) or 0.0)
-                    merged.at[idx, "EloRating"] = float(d.get("EloRating", 1500.0) or 1500.0)
-
-                    try:
-                        merged.at[idx, "CircuitHistoryAvg"] = float(feature_store.get_circuit_history(driver_code, circuit_name))
-                    except Exception:
-                        merged.at[idx, "CircuitHistoryAvg"] = 10.0
-
-                    try:
-                        merged.at[idx, "TeamPerfScore"] = float(feature_store.get_team_perf_score(team_name, int(race_year)))
-                    except Exception:
-                        merged.at[idx, "TeamPerfScore"] = 0.5
-            except Exception as fs_err:
-                logger.warning(f"[infer] FeatureStore fallback failed: {fs_err}")
-
-        else:
-            logger.debug(f"[infer] Merging {len(q)} qualifying with {len(hist_data)} historical rows...")
-
-            # Add missing required columns to qualifying
-            for col in hist_data.columns:
-                if col not in q.columns:
-                    if col == 'finishing_position':
-                        q[col] = np.nan  # To be predicted
-                    elif col == 'event_date':
-                        q[col] = pd.NaT
-                    else:
-                        q[col] = None
-
-            merged = pd.concat(
-                [
-                    hist_data,
-                    q[hist_data.columns.tolist()],
-                ],
-                ignore_index=True,
-                sort=False,
-            )
-
-            logger.debug(f"[infer] Merged dataset: {len(merged)} rows")
-
-            # Step 3: Compute engineered features dynamically from merged history
-            try:
-                logger.debug(f"[infer] Computing features from merged data...")
-                merged = compute_basic_features(merged)
-                logger.debug(f"[infer] Feature computation complete")
-            except Exception as e:
-                logger.warning(f"[infer] Feature computation failed: {e}")
-                for col in ['RecentFormAvg', 'CircuitHistoryAvg', 'DriverExperienceScore', 'TeamPerfScore', 'EloRating']:
-                    if col not in merged.columns:
-                        merged[col] = 0 if col != 'EloRating' else 1500.0
-
-    except Exception as e:
-        logger.warning(f"[infer] Merge/feature pipeline failed, continuing with defaults: {e}")
-        merged = q.copy()
-        for col in ['RecentFormAvg', 'CircuitHistoryAvg', 'DriverExperienceScore', 'TeamPerfScore', 'EloRating']:
-            if col not in merged.columns:
-                merged[col] = 0 if col != 'EloRating' else 1500.0
-    
-    # Step 4: Extract only the target race rows
-    race_rows = merged[merged['race_key'] == race_key].copy()
-    
-    if len(race_rows) == 0:
-        # If race_key not found, try using event as fallback
-        race_rows = merged[merged['event'] == event].copy()
-    
-    if len(race_rows) == 0:
-        # Last resort: use last rows from merged data (should be the new race)
-        race_rows = merged.tail(len(q)).copy()
-    
-    logger.debug(f"[infer] Extracted {len(race_rows)} rows for race prediction")
-    
-    # Step 5: Encode categorical features
-    # Supports both:
-    # - sklearn LabelEncoder objects (classes_)
-    # - compat metadata where encoders[c] is a list of class strings
-    for c in ["driver", "team", "circuit"]:
-        if c not in race_rows.columns:
-            race_rows[f"{c}_enc"] = 0
-            continue
-
-        enc_obj = encoders.get(c)
-        if enc_obj is None:
-            race_rows[f"{c}_enc"] = 0
-            continue
-
-        if hasattr(enc_obj, "classes_"):
-            classes = list(enc_obj.classes_)
-        elif isinstance(enc_obj, (list, tuple)):
-            classes = list(enc_obj)
-        else:
-            classes = []
-
-        index = {str(v): i for i, v in enumerate(classes)}
-        unknown = len(classes)
-        race_rows[f"{c}_enc"] = [index.get(str(v), unknown) for v in race_rows[c].astype(str)]
-
-        try:
-            if len(race_rows) > 0 and unknown > 0:
-                unk_count = int((race_rows[f"{c}_enc"] == unknown).sum())
-                unk_frac = unk_count / max(1, len(race_rows))
-                if unk_frac >= 0.5:
-                    logger.warning(f"[infer] High unknown rate for {c}: {unk_count}/{len(race_rows)}")
-        except Exception:
-            pass
-    
     # Step 6: Prepare feature matrix
     X = race_rows[feature_cols].fillna(0)
     
@@ -1238,6 +1076,175 @@ def infer_from_qualifying(qual_df, race_key, race_year, event, circuit, skip_cac
             axis=1
         ).tolist()
     }
+
+
+def build_race_rows_from_qualifying(qual_df, race_key, race_year, event, circuit):
+    """Build the per-driver feature rows for a single race.
+
+    This is the reusable part of inference: prepare/normalize qualifying rows,
+    merge with history or fall back to FeatureStore snapshots, compute engineered
+    features, extract the race rows, and encode categoricals.
+
+    Returns a DataFrame that contains `feature_cols`.
+    """
+    # Step 1: Prepare qualifying data
+    q = qual_df.copy()
+    q["race_key"] = race_key
+    q["race_year"] = race_year
+    q["event"] = event
+    q["circuit"] = circuit
+
+    # Ensure columns used by feature computation exist (qualifying-only inference)
+    if "event_date" not in q.columns:
+        q["event_date"] = pd.NaT
+    if "finishing_position" not in q.columns:
+        q["finishing_position"] = np.nan
+
+    # Ensure required columns exist
+    if "qualifying_position" not in q.columns and "qualifyingposition" not in q.columns:
+        q["qualifying_position"] = range(1, len(q) + 1)
+
+    if "qualifying_position" not in q.columns:
+        q.rename(columns={"qualifyingposition": "qualifying_position"}, inplace=True)
+
+    if "team" not in q.columns:
+        q["team"] = "Unknown"
+
+    # Normalize labels BEFORE merging with history so feature computation can find matches.
+    try:
+        driver_classes = _encoder_classes(encoders.get("driver"))
+        team_classes = _encoder_classes(encoders.get("team"))
+        circuit_classes = _encoder_classes(encoders.get("circuit"))
+
+        if "driver" in q.columns:
+            q["driver"] = q["driver"].astype(str).map(lambda v: _normalize_driver_code(v, driver_classes))
+        if "team" in q.columns:
+            q["team"] = q["team"].astype(str).map(lambda v: _normalize_team_name(v, team_classes))
+        q["circuit"] = _normalize_circuit_label(circuit, event, circuit_classes)
+    except Exception as e:
+        logger.debug(f"[infer] Label normalization skipped: {e}")
+
+    # Step 2: Merge with historical data if available.
+    # If historical data isn't available (common in slim deployments), fall back
+    # to FeatureStore snapshots so engineered features remain meaningful.
+    try:
+        hist_available = not (hist_data is None or len(getattr(hist_data, "columns", [])) == 0)
+        if not hist_available:
+            merged = q.copy()
+
+            # FeatureStore-backed engineered features (fast, no parquet dependency at runtime)
+            try:
+                merged["RecentFormAvg"] = 0.0
+                merged["CircuitHistoryAvg"] = 10.0
+                merged["DriverExperienceScore"] = 0.0
+                merged["TeamPerfScore"] = 0.5
+                merged["EloRating"] = 1500.0
+
+                for idx, row in merged.iterrows():
+                    driver_code = str(row.get("driver") or "").upper()
+                    team_name = str(row.get("team") or "Unknown")
+                    circuit_name = str(row.get("circuit") or "")
+
+                    d = feature_store.get_driver_features(driver_code) if driver_code else {}
+                    merged.at[idx, "RecentFormAvg"] = float(d.get("RecentFormAvg", 10.0) or 10.0)
+                    merged.at[idx, "DriverExperienceScore"] = float(d.get("DriverExperienceScore", 0.0) or 0.0)
+                    merged.at[idx, "EloRating"] = float(d.get("EloRating", 1500.0) or 1500.0)
+
+                    try:
+                        merged.at[idx, "CircuitHistoryAvg"] = float(feature_store.get_circuit_history(driver_code, circuit_name))
+                    except Exception:
+                        merged.at[idx, "CircuitHistoryAvg"] = 10.0
+
+                    try:
+                        merged.at[idx, "TeamPerfScore"] = float(feature_store.get_team_perf_score(team_name, int(race_year)))
+                    except Exception:
+                        merged.at[idx, "TeamPerfScore"] = 0.5
+            except Exception as fs_err:
+                logger.warning(f"[infer] FeatureStore fallback failed: {fs_err}")
+
+        else:
+            logger.debug(f"[infer] Merging {len(q)} qualifying with {len(hist_data)} historical rows...")
+
+            # Add missing required columns to qualifying
+            for col in hist_data.columns:
+                if col not in q.columns:
+                    if col == "finishing_position":
+                        q[col] = np.nan  # To be predicted
+                    elif col == "event_date":
+                        q[col] = pd.NaT
+                    else:
+                        q[col] = None
+
+            merged = pd.concat([hist_data, q[hist_data.columns.tolist()]], ignore_index=True, sort=False)
+
+            logger.debug(f"[infer] Merged dataset: {len(merged)} rows")
+
+            # Step 3: Compute engineered features dynamically from merged history
+            try:
+                logger.debug("[infer] Computing features from merged data...")
+                merged = compute_basic_features(merged)
+                logger.debug("[infer] Feature computation complete")
+            except Exception as e:
+                logger.warning(f"[infer] Feature computation failed: {e}")
+                for col in ["RecentFormAvg", "CircuitHistoryAvg", "DriverExperienceScore", "TeamPerfScore", "EloRating"]:
+                    if col not in merged.columns:
+                        merged[col] = 0 if col != "EloRating" else 1500.0
+
+    except Exception as e:
+        logger.warning(f"[infer] Merge/feature pipeline failed, continuing with defaults: {e}")
+        merged = q.copy()
+        for col in ["RecentFormAvg", "CircuitHistoryAvg", "DriverExperienceScore", "TeamPerfScore", "EloRating"]:
+            if col not in merged.columns:
+                merged[col] = 0 if col != "EloRating" else 1500.0
+
+    # Step 4: Extract only the target race rows
+    race_rows = merged[merged["race_key"] == race_key].copy()
+
+    if len(race_rows) == 0:
+        race_rows = merged[merged["event"] == event].copy()
+
+    if len(race_rows) == 0:
+        race_rows = merged.tail(len(q)).copy()
+
+    logger.debug(f"[infer] Extracted {len(race_rows)} rows for race prediction")
+
+    # Step 5: Encode categorical features
+    for c in ["driver", "team", "circuit"]:
+        if c not in race_rows.columns:
+            race_rows[f"{c}_enc"] = 0
+            continue
+
+        enc_obj = encoders.get(c)
+        if enc_obj is None:
+            race_rows[f"{c}_enc"] = 0
+            continue
+
+        if hasattr(enc_obj, "classes_"):
+            classes = list(enc_obj.classes_)
+        elif isinstance(enc_obj, (list, tuple)):
+            classes = list(enc_obj)
+        else:
+            classes = []
+
+        index = {str(v): i for i, v in enumerate(classes)}
+        unknown = len(classes)
+        race_rows[f"{c}_enc"] = [index.get(str(v), unknown) for v in race_rows[c].astype(str)]
+
+        try:
+            if len(race_rows) > 0 and unknown > 0:
+                unk_count = int((race_rows[f"{c}_enc"] == unknown).sum())
+                unk_frac = unk_count / max(1, len(race_rows))
+                if unk_frac >= 0.5:
+                    logger.warning(f"[infer] High unknown rate for {c}: {unk_count}/{len(race_rows)}")
+        except Exception:
+            pass
+
+    # Ensure feature columns exist
+    for col in feature_cols:
+        if col not in race_rows.columns:
+            race_rows[col] = 0
+
+    return race_rows
 
 
 @app.route('/')
