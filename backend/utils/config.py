@@ -55,19 +55,36 @@ class Config:
     MODEL_WINNER_FILE = os.getenv("MODEL_WINNER_FILE", "xgb_winner.joblib")
     MODEL_PODIUM_FILE = os.getenv("MODEL_PODIUM_FILE", "xgb_podium.joblib")
     MODEL_METADATA_FILE = os.getenv("MODEL_METADATA_FILE", "metadata.joblib")
+
+    # Compat artifacts (Option 2): avoid pickled sklearn/xgboost objects
+    MODEL_WINNER_JSON_FILE = os.getenv("MODEL_WINNER_JSON_FILE", "xgb_winner.json")
+    MODEL_PODIUM_JSON_FILE = os.getenv("MODEL_PODIUM_JSON_FILE", "xgb_podium.json")
+    MODEL_METADATA_COMPAT_FILE = os.getenv("MODEL_METADATA_COMPAT_FILE", "metadata_compat.json")
     
     # Full paths to model files
     @property
     def META_FILE(self) -> Path:
         return self.MODEL_DIR / self.MODEL_METADATA_FILE
+
+    @property
+    def META_COMPAT_FILE(self) -> Path:
+        return self.MODEL_DIR / self.MODEL_METADATA_COMPAT_FILE
     
     @property
     def MODEL_WIN_FILE(self) -> Path:
         return self.MODEL_DIR / self.MODEL_WINNER_FILE
+
+    @property
+    def MODEL_WIN_JSON_FILE(self) -> Path:
+        return self.MODEL_DIR / self.MODEL_WINNER_JSON_FILE
     
     @property
     def MODEL_POD_FILE(self) -> Path:
         return self.MODEL_DIR / self.MODEL_PODIUM_FILE
+
+    @property
+    def MODEL_POD_JSON_FILE(self) -> Path:
+        return self.MODEL_DIR / self.MODEL_PODIUM_JSON_FILE
     
     # Cache directories
     CACHE_DIR = get_path("CACHE_DIR", "./cache")

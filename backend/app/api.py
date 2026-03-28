@@ -109,6 +109,11 @@ META_FILE = str(config.META_FILE)
 MODEL_WIN_FILE = str(config.MODEL_WIN_FILE)
 MODEL_POD_FILE = str(config.MODEL_POD_FILE)
 
+# Compat (Option 2) artifacts
+META_COMPAT_FILE = str(getattr(config, "META_COMPAT_FILE", config.META_FILE))
+MODEL_WIN_JSON_FILE = str(getattr(config, "MODEL_WIN_JSON_FILE", config.MODEL_WIN_FILE))
+MODEL_POD_JSON_FILE = str(getattr(config, "MODEL_POD_JSON_FILE", config.MODEL_POD_FILE))
+
 # Cache directories
 CACHE_DIR = config.CACHE_DIR
 IMG_CACHE = config.IMG_CACHE_DIR
@@ -137,11 +142,57 @@ DRIVER_CODE_MAP = {
 fastf1.Cache.enable_cache(str(config.FASTF1_CACHE_DIR))
 logger.info(f"FastF1 cache enabled at: {config.FASTF1_CACHE_DIR}")
 try:
-    meta = joblib.load(META_FILE)
+    import json
+
+    def _load_meta_compat(path: str):
+        try:
+            p = Path(path)
+            if p.exists() and p.suffix.lower() == ".json":
+                payload = json.loads(p.read_text(encoding="utf-8"))
+                if isinstance(payload, dict) and "feature_cols" in payload and "encoders" in payload:
+                    return payload
+        except Exception:
+            pass
+        return None
+
+    def _load_meta_any() -> dict:
+        compat = _load_meta_compat(META_COMPAT_FILE)
+        if compat is not None:
+            logger.info("✓ Loaded metadata from compat JSON")
+            return compat
+
+        meta_obj = joblib.load(META_FILE)
+        if not isinstance(meta_obj, dict):
+            raise TypeError(f"metadata.joblib is not a dict: {type(meta_obj)}")
+        logger.info("✓ Loaded metadata from joblib")
+        return meta_obj
+
+    def _load_xgb_classifier_any(native_path: str, joblib_path: str):
+        """Prefer native XGBoost model file; fallback to joblib."""
+        try:
+            p = Path(native_path)
+            if p.exists() and p.suffix.lower() in {".json", ".ubj"}:
+                import xgboost as xgb
+
+                clf = xgb.XGBClassifier()
+                clf.load_model(str(p))
+                logger.info(f"✓ Loaded XGBoost model from native file: {p.name}")
+                return clf
+        except Exception as e:
+            logger.warning(f"⚠ Failed to load native XGBoost model ({native_path}): {e}")
+
+        obj = joblib.load(joblib_path)
+        if isinstance(obj, dict) and "model" in obj:
+            logger.info(f"✓ Loaded XGBoost model from joblib dict: {Path(joblib_path).name}")
+            return obj["model"]
+        logger.info(f"✓ Loaded XGBoost model from joblib: {Path(joblib_path).name}")
+        return obj
+
+    meta = _load_meta_any()
     encoders = meta["encoders"]
     feature_cols = meta["feature_cols"]
-    model_win = joblib.load(MODEL_WIN_FILE)["model"]
-    model_pod = joblib.load(MODEL_POD_FILE)["model"]
+    model_win = _load_xgb_classifier_any(MODEL_WIN_JSON_FILE, MODEL_WIN_FILE)
+    model_pod = _load_xgb_classifier_any(MODEL_POD_JSON_FILE, MODEL_POD_FILE)
     
     # NEW: Use feature store for efficient feature retrieval
     feature_store = get_feature_store(config)
@@ -155,18 +206,41 @@ try:
     # Prefer parquet if available (5.5x smaller, faster reads)
     from pathlib import Path
     hist_path = Path(HIST_CSV)
-    if hist_path.suffix == '.parquet' and hist_path.exists():
-        hist_data = pd.read_parquet(hist_path)
-        logger.info(f"✓ Loaded historical data from parquet ({hist_path.stat().st_size / 1024:.1f} KB)")
-    elif hist_path.with_suffix('.parquet').exists():
-        hist_data = pd.read_parquet(hist_path.with_suffix('.parquet'))
-        logger.info(f"✓ Loaded historical data from parquet ({hist_path.with_suffix('.parquet').stat().st_size / 1024:.1f} KB)")
-    elif hist_path.exists():
-        hist_data = pd.read_csv(hist_path)
-        logger.info(f"⚠ Using CSV for historical data (consider converting to parquet)")
-    else:
-        logger.error(f"❌ Historical data file not found: {hist_path}")
-        hist_data = pd.DataFrame()
+    hist_data = pd.DataFrame()
+    try:
+        if hist_path.suffix == '.parquet' and hist_path.exists():
+            hist_data = pd.read_parquet(hist_path)
+            logger.info(f"✓ Loaded historical data from parquet ({hist_path.stat().st_size / 1024:.1f} KB)")
+        elif hist_path.with_suffix('.parquet').exists():
+            parquet_path = hist_path.with_suffix('.parquet')
+            hist_data = pd.read_parquet(parquet_path)
+            logger.info(f"✓ Loaded historical data from parquet ({parquet_path.stat().st_size / 1024:.1f} KB)")
+        elif hist_path.exists():
+            hist_data = pd.read_csv(hist_path)
+            logger.info("⚠ Using CSV for historical data (consider converting to parquet)")
+        else:
+            logger.warning(f"⚠ Historical data file not found: {hist_path} (continuing without it)")
+    except Exception as hist_err:
+        logger.warning(f"⚠ Failed to load historical data from {hist_path}: {hist_err}")
+
+        # Fallback: try an older known-good training dataset if present.
+        # This keeps inference quality reasonable even if the latest parquet is corrupt.
+        fallback_paths = [
+            hist_path.parent / "f1_training_dataset_2018_2024.parquet",
+        ]
+        for fp in fallback_paths:
+            if not fp.exists():
+                continue
+            try:
+                hist_data = pd.read_parquet(fp)
+                logger.info(f"✓ Loaded historical data from fallback parquet ({fp})")
+                break
+            except Exception as fallback_err:
+                logger.warning(f"⚠ Fallback historical load failed for {fp}: {fallback_err}")
+
+        if hist_data is None or len(getattr(hist_data, "columns", [])) == 0:
+            hist_data = pd.DataFrame()
+            logger.warning("⚠ Continuing with empty hist_data")
     logger.info("Models and data loaded successfully")
     
     # Register models in MLflow (production models)
@@ -677,11 +751,21 @@ def compute_basic_features(df):
     - EloRating: Elo rating (if available)
     """
     df = df.copy()
+
+    # Defensive: allow qualifying-only datasets (no historical rows)
+    if 'event_date' not in df.columns:
+        df['event_date'] = pd.NaT
+    else:
+        df['event_date'] = pd.to_datetime(df['event_date'], errors='coerce')
+
     df = df.sort_values(['driver', 'race_year', 'event_date']).reset_index(drop=True)
     
     # Convert finishing position to numeric
     df['finishing_position_num'] = pd.to_numeric(df['finishing_position'], errors='coerce')
     median_finish = df['finishing_position_num'].median()
+    if pd.isna(median_finish):
+        # Qualifying-only inference has no finishing positions; use mid-pack default.
+        median_finish = 10.0
     
     logger.debug(f"[compute_basic_features] Input: {len(df)} rows, {df['driver'].nunique()} drivers")
     
@@ -796,6 +880,12 @@ def infer_from_qualifying(qual_df, race_key, race_year, event, circuit, skip_cac
     q["race_year"] = race_year
     q["event"] = event
     q["circuit"] = circuit
+
+    # Ensure columns used by feature computation exist (qualifying-only inference)
+    if 'event_date' not in q.columns:
+        q['event_date'] = pd.NaT
+    if 'finishing_position' not in q.columns:
+        q['finishing_position'] = np.nan
     
     # Ensure required columns exist
     if "qualifying_position" not in q.columns and "qualifyingposition" not in q.columns:
@@ -808,31 +898,34 @@ def infer_from_qualifying(qual_df, race_key, race_year, event, circuit, skip_cac
         q["team"] = "Unknown"
     
     # Step 2: 🔥 MERGE with historical data (CRITICAL for realistic features!)
-    # This is what was missing - FeatureStore approach uses defaults!
+    # If historical data isn't available, fall back to using qualifying-only.
     try:
-        logger.debug(f"[infer] Merging {len(q)} qualifying with {len(hist_data)} historical rows...")
-        
-        # Select columns that exist in both datasets
-        q_cols = [c for c in q.columns if c in hist_data.columns or c in ['race_key', 'race_year', 'event', 'circuit']]
-        
-        # Add missing required columns to qualifying
-        for col in hist_data.columns:
-            if col not in q.columns:
-                if col == 'finishing_position':
-                    q[col] = np.nan  # To be predicted
-                elif col == 'event_date':
-                    q[col] = pd.NaT
-                else:
-                    q[col] = None
-        
-        # Concatenate
-        merged = pd.concat([
-            hist_data,
-            q[hist_data.columns.tolist()]
-        ], ignore_index=True, sort=False)
-        
-        logger.debug(f"[infer] Merged dataset: {len(merged)} rows")
-        
+        if hist_data is None or len(getattr(hist_data, "columns", [])) == 0:
+            merged = q
+        else:
+            logger.debug(f"[infer] Merging {len(q)} qualifying with {len(hist_data)} historical rows...")
+
+            # Add missing required columns to qualifying
+            for col in hist_data.columns:
+                if col not in q.columns:
+                    if col == 'finishing_position':
+                        q[col] = np.nan  # To be predicted
+                    elif col == 'event_date':
+                        q[col] = pd.NaT
+                    else:
+                        q[col] = None
+
+            merged = pd.concat(
+                [
+                    hist_data,
+                    q[hist_data.columns.tolist()],
+                ],
+                ignore_index=True,
+                sort=False,
+            )
+
+            logger.debug(f"[infer] Merged dataset: {len(merged)} rows")
+
     except Exception as e:
         logger.warning(f"[infer] Merge failed, continuing without historical context: {e}")
         merged = q
@@ -863,19 +956,29 @@ def infer_from_qualifying(qual_df, race_key, race_year, event, circuit, skip_cac
     logger.debug(f"[infer] Extracted {len(race_rows)} rows for race prediction")
     
     # Step 5: Encode categorical features
+    # Supports both:
+    # - sklearn LabelEncoder objects (classes_)
+    # - compat metadata where encoders[c] is a list of class strings
     for c in ["driver", "team", "circuit"]:
-        if c in race_rows.columns:
-            le = encoders[c]
-            classes = list(le.classes_)
-            mapped = []
-            for v in race_rows[c].astype(str):
-                if v in classes:
-                    mapped.append(classes.index(v))
-                else:
-                    mapped.append(len(classes))  # Unknown class
-            race_rows[f"{c}_enc"] = mapped
-        else:
+        if c not in race_rows.columns:
             race_rows[f"{c}_enc"] = 0
+            continue
+
+        enc_obj = encoders.get(c)
+        if enc_obj is None:
+            race_rows[f"{c}_enc"] = 0
+            continue
+
+        if hasattr(enc_obj, "classes_"):
+            classes = list(enc_obj.classes_)
+        elif isinstance(enc_obj, (list, tuple)):
+            classes = list(enc_obj)
+        else:
+            classes = []
+
+        index = {str(v): i for i, v in enumerate(classes)}
+        unknown = len(classes)
+        race_rows[f"{c}_enc"] = [index.get(str(v), unknown) for v in race_rows[c].astype(str)]
     
     # Step 6: Prepare feature matrix
     X = race_rows[feature_cols].fillna(0)
