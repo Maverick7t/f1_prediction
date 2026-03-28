@@ -316,48 +316,29 @@ try:
     prediction_logger = get_prediction_logger(config)
     logger.info(f"✓ Prediction logger initialized (mode: {prediction_logger.mode})")
     
-    # Load historical data (still needed for some legacy endpoints)
-    # Prefer parquet if available (5.5x smaller, faster reads)
-    from pathlib import Path
-    hist_path = Path(HIST_CSV)
-    hist_data = pd.DataFrame()
-    try:
-        if getattr(config, "DISABLE_HISTORICAL_DATA", False):
-            hist_data = pd.DataFrame()
-            logger.info("⚠ Historical data loading disabled via DISABLE_HISTORICAL_DATA=true")
-        elif hist_path.suffix == '.parquet' and hist_path.exists():
-            hist_data = pd.read_parquet(hist_path)
-            logger.info(f"✓ Loaded historical data from parquet ({hist_path.stat().st_size / 1024:.1f} KB)")
-        elif hist_path.with_suffix('.parquet').exists():
-            parquet_path = hist_path.with_suffix('.parquet')
-            hist_data = pd.read_parquet(parquet_path)
-            logger.info(f"✓ Loaded historical data from parquet ({parquet_path.stat().st_size / 1024:.1f} KB)")
-        elif hist_path.exists():
-            hist_data = pd.read_csv(hist_path)
-            logger.info("⚠ Using CSV for historical data (consider converting to parquet)")
-        else:
-            logger.warning(f"⚠ Historical data file not found: {hist_path} (continuing without it)")
-    except Exception as hist_err:
-        logger.warning(f"⚠ Failed to load historical data from {hist_path}: {hist_err}")
-
-        # Fallback: try an older known-good training dataset if present.
-        # This keeps inference quality reasonable even if the latest parquet is corrupt.
-        fallback_paths = [
-            hist_path.parent / "f1_training_dataset_2018_2024.parquet",
+    # Historical training dataset loading removed for production simplicity.
+    # We rely on qualifying + FeatureStore snapshots + Supabase pipeline tables.
+    # Keep an empty DataFrame with expected columns so legacy endpoints don't crash.
+    hist_data = pd.DataFrame(
+        columns=[
+            "race_key",
+            "race_year",
+            "event",
+            "circuit",
+            "event_date",
+            "driver",
+            "team",
+            "qualifying_position",
+            "finishing_position",
+            "points",
+            "EloRating",
+            "RecentFormAvg",
+            "CircuitHistoryAvg",
+            "DriverExperienceScore",
+            "TeamPerfScore",
         ]
-        for fp in fallback_paths:
-            if not fp.exists():
-                continue
-            try:
-                hist_data = pd.read_parquet(fp)
-                logger.info(f"✓ Loaded historical data from fallback parquet ({fp})")
-                break
-            except Exception as fallback_err:
-                logger.warning(f"⚠ Fallback historical load failed for {fp}: {fallback_err}")
-
-        if hist_data is None or len(getattr(hist_data, "columns", [])) == 0:
-            hist_data = pd.DataFrame()
-            logger.warning("⚠ Continuing with empty hist_data")
+    )
+    logger.info("⚠ Historical training dataset disabled (qualifying-only production mode)")
     logger.info("Models and data loaded successfully")
     
     # Register models in MLflow (production models)
@@ -1131,7 +1112,7 @@ def build_race_rows_from_qualifying(qual_df, race_key, race_year, event, circuit
     # If historical data isn't available (common in slim deployments), fall back
     # to FeatureStore snapshots so engineered features remain meaningful.
     try:
-        hist_available = not (hist_data is None or len(getattr(hist_data, "columns", [])) == 0)
+        hist_available = hist_data is not None and (hasattr(hist_data, "empty") and not hist_data.empty)
         if not hist_available:
             merged = q.copy()
 

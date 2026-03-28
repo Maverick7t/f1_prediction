@@ -49,11 +49,6 @@ class Config:
     # DATA PATHS
     # ==========================================================================
     DATA_PATH = get_path("DATA_PATH", "./data/training/f1_training_dataset_2018_2025.parquet")
-
-    # Allow disabling any historical dataset/parquet usage in production.
-    # This is useful when you want inference to rely only on qualifying + snapshots
-    # + Supabase pipeline tables.
-    DISABLE_HISTORICAL_DATA = os.getenv("DISABLE_HISTORICAL_DATA", "false").lower() == "true"
     
     # Model directory and files
     MODEL_DIR = get_path("MODEL_DIR", "./models_spencer")
@@ -247,7 +242,6 @@ def print_config():
     print(f"Supabase Key:     {key_type}")
     print(f"Use Redis:        {config.USE_REDIS}")
     print(f"MLflow URI:       {config.MLFLOW_TRACKING_URI}")
-    print(f"Hist Data:        {'disabled' if config.DISABLE_HISTORICAL_DATA else 'enabled'}")
     print("="*60 + "\n")
 
 
