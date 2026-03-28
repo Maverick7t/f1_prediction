@@ -228,7 +228,7 @@ def print_config():
     print(f"Environment:      {config.FLASK_ENV}")
     print(f"Debug Mode:       {config.DEBUG}")
     print(f"Host:             {config.HOST}:{config.PORT}")
-    print(f"Data Path:        {config.DATA_PATH}")
+    print(f"Data Path (legacy): {config.DATA_PATH}")
     print(f"Model Dir:        {config.MODEL_DIR}")
     print(f"Cache Dir:        {config.CACHE_DIR}")
     print(f"FastF1 Cache:     {config.FASTF1_CACHE_DIR}")

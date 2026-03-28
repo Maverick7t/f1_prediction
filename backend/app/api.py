@@ -981,8 +981,24 @@ def infer_from_qualifying(qual_df, race_key, race_year, event, circuit, skip_cac
     logger.debug(f"[infer] Feature matrix shape: {X.shape}")
     
     # Step 7: Make predictions
-    race_rows["p_win"] = model_win.predict_proba(X)[:, 1]
-    race_rows["p_pod"] = model_pod.predict_proba(X)[:, 1]
+    # These are binary probabilities ("this driver wins"), not a true multi-class
+    # distribution across all drivers. For UI/percentages, normalize across the
+    # grid so outputs are interpretable and sum to 100%.
+    race_rows["p_win_raw"] = model_win.predict_proba(X)[:, 1]
+    race_rows["p_pod_raw"] = model_pod.predict_proba(X)[:, 1]
+
+    win_sum = float(race_rows["p_win_raw"].sum()) if "p_win_raw" in race_rows.columns else 0.0
+    pod_sum = float(race_rows["p_pod_raw"].sum()) if "p_pod_raw" in race_rows.columns else 0.0
+
+    if win_sum > 0:
+        race_rows["p_win"] = race_rows["p_win_raw"] / win_sum
+    else:
+        race_rows["p_win"] = 1.0 / max(1, len(race_rows))
+
+    if pod_sum > 0:
+        race_rows["p_pod"] = race_rows["p_pod_raw"] / pod_sum
+    else:
+        race_rows["p_pod"] = 1.0 / max(1, len(race_rows))
     
     logger.debug(f"[infer] Predictions made in {time.time() - start:.2f}s")
     
@@ -1751,29 +1767,10 @@ def get_next_race_prediction():
         except Exception:
             row = None
 
-        # Decide whether to recompute prediction from qualifying_raw.
-        should_recompute = False
+        # If we have qualifying_raw for the upcoming race, always recompute.
+        # This avoids serving stale predictions that may have been logged earlier
+        # under degraded conditions.
         if qual_rows and isinstance(qual_rows, list) and len(qual_rows) >= 10:
-            if not (row and row.get("predicted")):
-                should_recompute = True
-            else:
-                fp_existing = row.get("full_predictions")
-                if isinstance(fp_existing, str):
-                    try:
-                        fp_existing = json.loads(fp_existing)
-                    except Exception:
-                        fp_existing = None
-                if not isinstance(fp_existing, dict):
-                    should_recompute = True
-                else:
-                    if fp_existing.get("race_key") != race_key:
-                        should_recompute = True
-                    if fp_existing.get("qualifying_hash") != qual_hash:
-                        should_recompute = True
-                    if fp_existing.get("source") != "qualifying_raw":
-                        should_recompute = True
-
-        if should_recompute:
             try:
                 qual_df = pd.DataFrame(qual_rows)
                 # Ensure expected columns exist
