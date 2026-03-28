@@ -322,7 +322,10 @@ try:
     hist_path = Path(HIST_CSV)
     hist_data = pd.DataFrame()
     try:
-        if hist_path.suffix == '.parquet' and hist_path.exists():
+        if getattr(config, "DISABLE_HISTORICAL_DATA", False):
+            hist_data = pd.DataFrame()
+            logger.info("⚠ Historical data loading disabled via DISABLE_HISTORICAL_DATA=true")
+        elif hist_path.suffix == '.parquet' and hist_path.exists():
             hist_data = pd.read_parquet(hist_path)
             logger.info(f"✓ Loaded historical data from parquet ({hist_path.stat().st_size / 1024:.1f} KB)")
         elif hist_path.with_suffix('.parquet').exists():
