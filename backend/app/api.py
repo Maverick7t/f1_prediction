@@ -94,6 +94,120 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def _encoder_classes(enc_obj):
+    """Return a list of known classes for a LabelEncoder-like object or compat list."""
+    try:
+        if enc_obj is None:
+            return []
+        if hasattr(enc_obj, "classes_"):
+            return [str(c) for c in list(enc_obj.classes_)]
+        if isinstance(enc_obj, (list, tuple)):
+            return [str(c) for c in list(enc_obj)]
+    except Exception:
+        pass
+    return []
+
+
+def _normalize_driver_code(value: str, driver_classes: list[str]) -> str:
+    if value is None:
+        return ""
+    v = str(value).strip()
+    if not v:
+        return v
+    v_up = v.upper()
+    if v_up in driver_classes:
+        return v_up
+    return v_up
+
+
+def _normalize_team_name(value: str, team_classes: list[str]) -> str:
+    """Normalize common team aliases to the training labels."""
+    if value is None:
+        return ""
+    v = str(value).strip()
+    if not v:
+        return v
+    if v in team_classes:
+        return v
+
+    v_low = v.lower()
+    alias = {
+        "red bull": "Red Bull Racing",
+        "red bull racing": "Red Bull Racing",
+        "racing bulls": "RB",
+        "rb f1 team": "RB",
+        "visa cash app rb": "RB",
+        "visa cash app rb f1 team": "RB",
+        "alpine f1 team": "Alpine",
+        "haas": "Haas F1 Team",
+        "haas f1": "Haas F1 Team",
+        "kick sauber": "Kick Sauber",
+        "sauber": "Sauber",
+        # 2026+ constructor branding (map to closest known training label)
+        "audi": "Sauber",
+        "alphatauri": "AlphaTauri",
+    }
+
+    if v_low in alias and alias[v_low] in team_classes:
+        return alias[v_low]
+
+    # Best-effort contains match (e.g. "Red Bull" -> "Red Bull Racing")
+    matches = [c for c in team_classes if v_low in c.lower()]
+    if matches:
+        matches.sort(key=lambda s: (len(s), s))
+        return matches[0]
+
+    return v
+
+
+def _normalize_circuit_label(circuit: str, event: str, circuit_classes: list[str]) -> str:
+    """Map short race names (e.g. 'Chinese Grand Prix') to training circuit labels.
+
+    Training data uses official event titles like 'FORMULA 1 ... CHINESE GRAND PRIX 2024'.
+    """
+    if circuit is None and event is None:
+        return ""
+
+    # Prefer explicit circuit param; fall back to event.
+    raw = str(circuit or event).strip()
+    if not raw:
+        return raw
+    if raw in circuit_classes:
+        return raw
+
+    candidates = [raw]
+    if event and str(event).strip() and str(event).strip() not in candidates:
+        candidates.append(str(event).strip())
+
+    def year_key(label: str) -> int:
+        import re
+
+        years = [int(m.group(0)) for m in re.finditer(r"\b(19|20)\d{2}\b", label)]
+        return max(years) if years else -1
+
+    best = None
+    best_score = None
+    for cand in candidates:
+        clow = cand.lower()
+        matches = [c for c in circuit_classes if clow in c.lower()]
+        if not matches and "grand prix" in clow:
+            # try just the '{X} grand prix' substring
+            gp = clow[clow.find("grand prix") - 40 :].strip()
+            matches = [c for c in circuit_classes if gp in c.lower()]
+        if not matches:
+            continue
+
+        # Prefer the most recent year; tie-break on shortest label.
+        matches.sort(key=lambda s: (-year_key(s), len(s), s))
+        pick = matches[0]
+        score = (-year_key(pick), len(pick))
+        if best is None or score < best_score:
+            best = pick
+            best_score = score
+
+    return best or raw
+
 # Print configuration on startup (helpful for debugging)
 print_config()
 
@@ -896,6 +1010,20 @@ def infer_from_qualifying(qual_df, race_key, race_year, event, circuit, skip_cac
     
     if "team" not in q.columns:
         q["team"] = "Unknown"
+
+    # Normalize labels BEFORE merging with history so feature computation can find matches.
+    try:
+        driver_classes = _encoder_classes(encoders.get("driver"))
+        team_classes = _encoder_classes(encoders.get("team"))
+        circuit_classes = _encoder_classes(encoders.get("circuit"))
+
+        if "driver" in q.columns:
+            q["driver"] = q["driver"].astype(str).map(lambda v: _normalize_driver_code(v, driver_classes))
+        if "team" in q.columns:
+            q["team"] = q["team"].astype(str).map(lambda v: _normalize_team_name(v, team_classes))
+        q["circuit"] = _normalize_circuit_label(circuit, event, circuit_classes)
+    except Exception as e:
+        logger.debug(f"[infer] Label normalization skipped: {e}")
     
     # Step 2: 🔥 MERGE with historical data (CRITICAL for realistic features!)
     # If historical data isn't available, fall back to using qualifying-only.
@@ -979,6 +1107,15 @@ def infer_from_qualifying(qual_df, race_key, race_year, event, circuit, skip_cac
         index = {str(v): i for i, v in enumerate(classes)}
         unknown = len(classes)
         race_rows[f"{c}_enc"] = [index.get(str(v), unknown) for v in race_rows[c].astype(str)]
+
+        try:
+            if len(race_rows) > 0 and unknown > 0:
+                unk_count = int((race_rows[f"{c}_enc"] == unknown).sum())
+                unk_frac = unk_count / max(1, len(race_rows))
+                if unk_frac >= 0.5:
+                    logger.warning(f"[infer] High unknown rate for {c}: {unk_count}/{len(race_rows)}")
+        except Exception:
+            pass
     
     # Step 6: Prepare feature matrix
     X = race_rows[feature_cols].fillna(0)

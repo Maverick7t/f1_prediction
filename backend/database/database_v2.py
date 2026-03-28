@@ -65,28 +65,6 @@ class PredictionLogger:
         else:
             self._mode = "csv"
             logger.info("✓ Using local CSV for prediction logging")
-
-    def _query_postgres(self, query: str, params: tuple = ()) -> List[Dict[str, Any]]:
-        """Query Supabase Postgres directly via DATABASE_URL (bypasses PostgREST/RLS issues).
-
-        Returns list of dict rows.
-        """
-        database_url = getattr(self.config, "DATABASE_URL", None)
-        if not database_url:
-            return []
-
-        try:
-            import psycopg2
-            from psycopg2.extras import RealDictCursor
-
-            with psycopg2.connect(database_url) as conn:
-                with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                    cur.execute(query, params)
-                    rows = cur.fetchall() or []
-                    return [dict(r) for r in rows]
-        except Exception as e:
-            logger.warning(f"Postgres fallback query failed: {e}")
-            return []
     
     @property
     def mode(self) -> str:
@@ -224,7 +202,6 @@ class PredictionLogger:
 
     def get_latest_prediction(self, race_name: str, *, race_year: Optional[int] = None) -> Optional[Dict[str, Any]]:
         """Fetch the most recent prediction row for a race."""
-        # Prefer Supabase REST if available
         if self._mode == "supabase":
             try:
                 q = self.supabase.table("predictions").select("*").eq("race", race_name)
@@ -236,17 +213,26 @@ class PredictionLogger:
             except Exception as e:
                 logger.error(f"Failed to fetch latest prediction (Supabase REST): {e}")
 
-        # Fallback to direct Postgres
-        where_sql = "where race = %s"
-        params: List[Any] = [race_name]
-        if race_year is not None:
-            where_sql += " and race_year = %s"
-            params.append(int(race_year))
-        rows = self._query_postgres(
-            f"select * from public.predictions {where_sql} order by timestamp desc limit 1",
-            tuple(params),
-        )
-        return rows[0] if rows else None
+        # CSV mode
+        try:
+            df = self.get_prediction_history(limit=5000)
+            if df is None or df.empty:
+                return None
+            df = df[df["race"] == race_name]
+            if race_year is not None and "race_year" in df.columns:
+                df = df[df["race_year"].astype("Int64") == int(race_year)]
+            if df.empty:
+                return None
+            row = df.sort_values("timestamp", ascending=False).iloc[0].to_dict()
+            for key, value in list(row.items()):
+                try:
+                    if pd.isna(value):
+                        row[key] = None
+                except Exception:
+                    pass
+            return row
+        except Exception:
+            return None
 
     def get_most_recent_prediction(self) -> Optional[Dict[str, Any]]:
         """Fetch the most recent prediction row across all races.
@@ -285,16 +271,34 @@ class PredictionLogger:
                     .execute()
                 )
                 data = list(resp.data or [])
-                if data:
-                    return data
+                return data
             except Exception as e:
                 logger.error(f"Failed to fetch predictions missing actual (Supabase REST): {e}")
 
-        rows = self._query_postgres(
-            "select id, timestamp, race, race_year, circuit, predicted from public.predictions where actual is null order by timestamp desc limit %s",
-            (int(limit),),
-        )
-        return rows
+        # CSV mode
+        try:
+            df = self.get_prediction_history(limit=5000)
+            if df is None or df.empty:
+                return []
+            if "actual" not in df.columns:
+                return []
+            missing = df[df["actual"].isna()].copy()
+            if missing.empty:
+                return []
+            missing = missing.sort_values("timestamp", ascending=False).head(int(limit))
+            rows: List[Dict[str, Any]] = []
+            for _, r in missing.iterrows():
+                row = r.to_dict()
+                for key, value in list(row.items()):
+                    try:
+                        if pd.isna(value):
+                            row[key] = None
+                    except Exception:
+                        pass
+                rows.append(row)
+            return rows
+        except Exception:
+            return []
     
     def get_prediction_history(self, limit: int = 100) -> pd.DataFrame:
         """Get prediction history for accuracy analysis"""
@@ -305,30 +309,10 @@ class PredictionLogger:
                     .order('timestamp', desc=True) \
                     .limit(limit) \
                     .execute()
-                if response.data:
-                    return pd.DataFrame(response.data)
-
-                # RLS/anon-key often returns 200 + empty list. Try direct Postgres.
-                pg_rows = self._query_postgres(
-                    "select * from public.predictions order by timestamp desc limit %s",
-                    (int(limit),),
-                )
-                if pg_rows:
-                    logger.info("Using Postgres fallback for predictions history (RLS-safe)")
-                    return pd.DataFrame(pg_rows)
-
-                return pd.DataFrame()
+                return pd.DataFrame(list(response.data or []))
             except Exception as e:
                 logger.error(f"Query failed: {e}")
-
-                # If Supabase REST call fails outright, still try Postgres.
-                pg_rows = self._query_postgres(
-                    "select * from public.predictions order by timestamp desc limit %s",
-                    (int(limit),),
-                )
-                if pg_rows:
-                    logger.info("Using Postgres fallback for predictions history")
-                    return pd.DataFrame(pg_rows)
+                return pd.DataFrame()
         
         # Fallback to CSV
         log_path = Path("monitoring/predictions.csv")
