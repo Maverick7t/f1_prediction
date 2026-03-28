@@ -109,7 +109,7 @@ class FeatureStore:
         Cache layers:
         1. In-memory DataFrame (loaded at startup)
         2. Redis (if configured)
-        3. Compute from Parquet (fallback)
+        3. Default features (safe fallback)
         """
         # Layer 1: In-memory snapshot
         if self._driver_features_cache is not None:
@@ -126,18 +126,11 @@ class FeatureStore:
             if cached:
                 return json.loads(cached)
         
-        # Layer 3: Compute from Parquet (slow path)
-        features = self._compute_driver_features_from_parquet(driver_code)
-        
-        # Cache in Redis for next time
-        if self.redis_client and features:
-            self.redis_client.setex(
-                f"driver_features:{driver_code}",
-                self.redis_ttl,
-                json.dumps(features)
-            )
-        
-        return features
+        # Layer 3: Safe fallback.
+        # NOTE: Avoid on-demand parquet reads here. In some Windows environments,
+        # pyarrow can hard-abort the interpreter when reading certain parquet files
+        # with filters (STATUS_STACK_BUFFER_OVERRUN / Fatal Python error: Aborted).
+        return self._get_default_features(driver_code)
     
     @lru_cache(maxsize=128)
     def _get_driver_recent_form_cached(self, driver_code: str, n_races: int = 10) -> pd.DataFrame:
@@ -283,30 +276,7 @@ class FeatureStore:
             if cached:
                 return float(cached)
         
-        # Compute from Parquet with fuzzy match (slow path)
-        if self.parquet_path.exists():
-            try:
-                # Read all data for this driver
-                df = pd.read_parquet(
-                    self.parquet_path,
-                    filters=[("driver", "==", driver_code)],
-                    columns=["circuit", "finishing_position"]
-                )
-                
-                # Fuzzy filter by circuit name
-                df = df[df['circuit'].str.contains(circuit, case=False, na=False)]
-                
-                if not df.empty:
-                    avg = df["finishing_position"].mean()
-                    
-                    # Cache result in Redis
-                    if self.redis_client:
-                        self.redis_client.setex(cache_key, self.redis_ttl, str(avg))
-                    
-                    return avg
-            except Exception as e:
-                logger.debug(f"Circuit history lookup failed: {e}")
-        
+        # Safe fallback: do not attempt parquet reads at inference time.
         return 10.0  # Default median
     
     # =========================================================================

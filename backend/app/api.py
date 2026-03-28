@@ -1025,11 +1025,44 @@ def infer_from_qualifying(qual_df, race_key, race_year, event, circuit, skip_cac
     except Exception as e:
         logger.debug(f"[infer] Label normalization skipped: {e}")
     
-    # Step 2: 🔥 MERGE with historical data (CRITICAL for realistic features!)
-    # If historical data isn't available, fall back to using qualifying-only.
+    # Step 2: Merge with historical data if available.
+    # If historical data isn't available (common in slim deployments), fall back
+    # to FeatureStore snapshots so engineered features remain meaningful.
     try:
-        if hist_data is None or len(getattr(hist_data, "columns", [])) == 0:
-            merged = q
+        hist_available = not (hist_data is None or len(getattr(hist_data, "columns", [])) == 0)
+        if not hist_available:
+            merged = q.copy()
+
+            # FeatureStore-backed engineered features (fast, no parquet dependency at runtime)
+            try:
+                merged["RecentFormAvg"] = 0.0
+                merged["CircuitHistoryAvg"] = 10.0
+                merged["DriverExperienceScore"] = 0.0
+                merged["TeamPerfScore"] = 0.5
+                merged["EloRating"] = 1500.0
+
+                for idx, row in merged.iterrows():
+                    driver_code = str(row.get("driver") or "").upper()
+                    team_name = str(row.get("team") or "Unknown")
+                    circuit_name = str(row.get("circuit") or "")
+
+                    d = feature_store.get_driver_features(driver_code) if driver_code else {}
+                    merged.at[idx, "RecentFormAvg"] = float(d.get("RecentFormAvg", 10.0) or 10.0)
+                    merged.at[idx, "DriverExperienceScore"] = float(d.get("DriverExperienceScore", 0.0) or 0.0)
+                    merged.at[idx, "EloRating"] = float(d.get("EloRating", 1500.0) or 1500.0)
+
+                    try:
+                        merged.at[idx, "CircuitHistoryAvg"] = float(feature_store.get_circuit_history(driver_code, circuit_name))
+                    except Exception:
+                        merged.at[idx, "CircuitHistoryAvg"] = 10.0
+
+                    try:
+                        merged.at[idx, "TeamPerfScore"] = float(feature_store.get_team_perf_score(team_name, int(race_year)))
+                    except Exception:
+                        merged.at[idx, "TeamPerfScore"] = 0.5
+            except Exception as fs_err:
+                logger.warning(f"[infer] FeatureStore fallback failed: {fs_err}")
+
         else:
             logger.debug(f"[infer] Merging {len(q)} qualifying with {len(hist_data)} historical rows...")
 
@@ -1054,18 +1087,20 @@ def infer_from_qualifying(qual_df, race_key, race_year, event, circuit, skip_cac
 
             logger.debug(f"[infer] Merged dataset: {len(merged)} rows")
 
+            # Step 3: Compute engineered features dynamically from merged history
+            try:
+                logger.debug(f"[infer] Computing features from merged data...")
+                merged = compute_basic_features(merged)
+                logger.debug(f"[infer] Feature computation complete")
+            except Exception as e:
+                logger.warning(f"[infer] Feature computation failed: {e}")
+                for col in ['RecentFormAvg', 'CircuitHistoryAvg', 'DriverExperienceScore', 'TeamPerfScore', 'EloRating']:
+                    if col not in merged.columns:
+                        merged[col] = 0 if col != 'EloRating' else 1500.0
+
     except Exception as e:
-        logger.warning(f"[infer] Merge failed, continuing without historical context: {e}")
-        merged = q
-    
-    # Step 3: 🔥 COMPUTE FEATURES DYNAMICALLY (instead of FeatureStore lookup!)
-    try:
-        logger.debug(f"[infer] Computing features from merged data...")
-        merged = compute_basic_features(merged)
-        logger.debug(f"[infer] Feature computation complete")
-    except Exception as e:
-        logger.warning(f"[infer] Feature computation failed: {e}")
-        # Fallback to defaults
+        logger.warning(f"[infer] Merge/feature pipeline failed, continuing with defaults: {e}")
+        merged = q.copy()
         for col in ['RecentFormAvg', 'CircuitHistoryAvg', 'DriverExperienceScore', 'TeamPerfScore', 'EloRating']:
             if col not in merged.columns:
                 merged[col] = 0 if col != 'EloRating' else 1500.0
@@ -1139,8 +1174,8 @@ def infer_from_qualifying(qual_df, race_key, race_year, event, circuit, skip_cac
     winner = race_rows.sort_values("p_win", ascending=False).iloc[0]
     hybrid_board = race_rows.sort_values("hybrid_score", ascending=False)
     
-    # Calculate confidence
-    winner_pct = int(float(winner["p_win"]) * 100)
+    # Calculate confidence (keep decimals; avoids truncating small non-zero values to 0%)
+    winner_pct = round(float(winner["p_win"]) * 100, 2)
     winner_confidence = get_confidence_level(winner_pct)
     
     logger.info(f"[infer] Prediction: {winner['driver']} {winner_pct}% ({winner_confidence['level']})")
@@ -1183,9 +1218,9 @@ def infer_from_qualifying(qual_df, race_key, race_year, event, circuit, skip_cac
                 "driver": row["driver"],
                 "team": row["team"],
                 "hybrid_score": float(row["hybrid_score"]),
-                "percentage": int(float(row["p_pod"]) * 100),
-                "confidence": get_confidence_level(int(float(row["p_pod"]) * 100))["level"],
-                "confidence_color": get_confidence_level(int(float(row["p_pod"]) * 100))["color"]
+                "percentage": round(float(row["p_pod"]) * 100, 2),
+                "confidence": get_confidence_level(round(float(row["p_pod"]) * 100, 2))["level"],
+                "confidence_color": get_confidence_level(round(float(row["p_pod"]) * 100, 2))["color"]
             },
             axis=1
         ).tolist(),

@@ -25,8 +25,6 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 import requests
 
-import fastf1
-
 from app.api import infer_from_qualifying
 
 
@@ -54,11 +52,59 @@ def _today_utc_date_str() -> str:
     return datetime.now(timezone.utc).date().isoformat()
 
 
+def _completed_races_from_ergast(year: int, *, limit: int) -> List[RaceMeta]:
+    """Return most recent completed races using Ergast season calendar.
+
+    This path uses `requests` with an explicit timeout (via `_get_json`) and
+    is therefore safer to run in environments where FastF1 can stall.
+    """
+    payload = _get_json(f"{{BASE}}/{int(year)}.json")
+    races = payload.get("MRData", {}).get("RaceTable", {}).get("Races", [])
+    if not races:
+        return []
+
+    today = _today_utc_date_str()
+    completed: List[RaceMeta] = []
+
+    for r in races:
+        date_str = str(r.get("date") or "")[:10]
+        if not date_str:
+            continue
+        if date_str > today:
+            continue
+
+        try:
+            round_no = int(r.get("round"))
+        except Exception:
+            continue
+
+        race_name = str(r.get("raceName") or "Unknown")
+        circuit_name = str((r.get("Circuit") or {}).get("circuitName") or race_name)
+
+        completed.append(
+            RaceMeta(
+                year=int(year),
+                round=round_no,
+                race_name=race_name,
+                circuit_name=circuit_name,
+                date=date_str,
+            )
+        )
+
+    if not completed:
+        return []
+
+    completed = sorted(completed, key=lambda x: (x.date, x.round))
+    return completed[-int(limit) :]
+
+
 def _completed_races_from_fastf1(year: int, *, limit: int) -> List[RaceMeta]:
     """Return most recent completed races using FastF1 schedule.
 
     This avoids relying on the Ergast season calendar endpoint.
     """
+    import fastf1
+
     schedule = fastf1.get_event_schedule(int(year))
     schedule["EventDate"] = pd.to_datetime(schedule.get("EventDate"), errors="coerce")
 
@@ -98,6 +144,16 @@ def _completed_races_from_fastf1(year: int, *, limit: int) -> List[RaceMeta]:
         )
 
     return out
+
+
+def _completed_races(year: int, *, limit: int) -> List[RaceMeta]:
+    try:
+        races = _completed_races_from_ergast(year, limit=limit)
+        if races:
+            return races
+    except Exception:
+        pass
+    return _completed_races_from_fastf1(year, limit=limit)
 
 
 def _get_json(url: str) -> Dict[str, Any]:
@@ -218,7 +274,7 @@ def _emit_insert_sql(row: Dict[str, Any]) -> str:
 
 
 def backfill(year: int, limit: int) -> List[Dict[str, Any]]:
-    races = _completed_races_from_fastf1(year, limit=limit)
+    races = _completed_races(year, limit=limit)
     if not races:
         return []
 
