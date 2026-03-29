@@ -44,6 +44,9 @@ class Config:
     
     # Logging
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+    # Optional server-to-server key for write/mutation endpoints
+    API_WRITE_KEY = os.getenv("API_WRITE_KEY")
     
     # ==========================================================================
     # DATA PATHS

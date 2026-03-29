@@ -360,24 +360,8 @@ export async function fetchNextRace() {
         return cache.nextRace;
     } catch (error) {
         console.error('Error fetching next race from backend:', error);
-        return getFallbackRaceData();
+        throw error;
     }
-}
-
-function getFallbackRaceData() {
-    console.warn('Using fallback race data');
-    return {
-        raceName: 'Australian Grand Prix',
-        country: 'Australia',
-        location: 'Melbourne',
-        circuitName: 'Albert Park Circuit',
-        circuitKey: 'albert-park',
-        circuitImage: 'https://media.formula1.com/image/upload/f_auto,c_limit,w_1440,q_auto/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Australia_Circuit',
-        dateStart: new Date('2026-03-15T05:00:00Z'),
-        dateEnd: new Date('2026-03-15T07:00:00Z'),
-        year: 2026,
-        sessionKey: 'latest'
-    };
 }
 
 /**

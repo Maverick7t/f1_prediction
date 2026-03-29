@@ -21,6 +21,7 @@ from pathlib import Path
 import hashlib
 import fastf1
 from datetime import datetime
+import uuid
 import json
 import traceback
 
@@ -84,8 +85,8 @@ def handle_404(e):
 
 @app.errorhandler(Exception)
 def handle_exception(e):
-    logger.error(f"Unhandled exception: {e}")
-    return jsonify({"success": False, "error": "An internal error occurred. Please try again later."}), 500
+    logger.exception("Unhandled exception")
+    return jsonify({"success": False, "error": "Internal server error"}), 500
 
 # Configure logging based on config
 logging.basicConfig(
@@ -93,6 +94,41 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+def _internal_error(context: str, e: Exception):
+    """Log exception details server-side; return a safe generic error to clients."""
+    error_id = uuid.uuid4().hex[:10]
+    logger.error(f"{context} [error_id={error_id}]: {e}")
+    logger.error(traceback.format_exc())
+    return jsonify({"success": False, "error": "Internal server error", "error_id": error_id}), 500
+
+
+def _get_bearer_or_api_key() -> str:
+    auth = request.headers.get("Authorization", "")
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    return (
+        request.headers.get("X-API-Key")
+        or request.headers.get("x-api-key")
+        or ""
+    ).strip()
+
+
+def _require_write_key():
+    expected = getattr(config, "API_WRITE_KEY", None)
+    if not expected:
+        if config.FLASK_ENV == "production":
+            logger.error("API_WRITE_KEY is not set in production")
+            return jsonify({"success": False, "error": "Server misconfigured"}), 500
+        logger.warning("API_WRITE_KEY not set; allowing write in non-production")
+        return None
+
+    provided = _get_bearer_or_api_key()
+    if not provided or provided != expected:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+
+    return None
 
 
 def _encoder_classes(enc_obj):
@@ -1296,11 +1332,7 @@ def prediction_accuracy():
             "data": stats
         })
     except Exception as e:
-        logger.error(f"Error getting accuracy stats: {e}")
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+        return _internal_error("Error getting accuracy stats", e)
 
 
 @app.route('/api/prediction-history', methods=['GET'])
@@ -1319,11 +1351,7 @@ def prediction_history():
             "data": history.to_dict(orient='records') if not history.empty else []
         })
     except Exception as e:
-        logger.error(f"Error getting prediction history: {e}")
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+        return _internal_error("Error getting prediction history", e)
 
 
 @app.route('/api/update-actual-winner', methods=['POST'])
@@ -1333,6 +1361,10 @@ def update_actual_winner():
     Expects JSON: {"race_name": "São Paulo Grand Prix", "actual_winner": "NOR"}
     """
     try:
+        auth_error = _require_write_key()
+        if auth_error is not None:
+            return auth_error
+
         data = request.json or {}
         race_name = data.get('race_name')
         race_year = data.get('race_year')
@@ -1351,11 +1383,7 @@ def update_actual_winner():
             "message": f"Updated actual winner for {race_name} to {actual_winner}" if success else "Update failed"
         })
     except Exception as e:
-        logger.error(f"Error updating actual winner: {e}")
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+        return _internal_error("Error updating actual winner", e)
 
 
 @app.route('/api/predict', methods=['POST'])
@@ -1375,12 +1403,40 @@ def predict():
     """
     try:
         data = request.json or {}
-        
-        # Validate minimum required fields
-        required_fields = ["race_key", "race_year", "event", "circuit"]
-        for field in required_fields:
-            if field not in data:
-                return jsonify({"error": f"Missing required field: {field}"}), 400
+
+        def bad_request(message: str):
+            return jsonify({"success": False, "error": message}), 400
+
+        def _ensure_str(field: str, max_len: int = 200) -> str:
+            val = data.get(field)
+            if val is None:
+                raise ValueError(f"Missing required field: {field}")
+            s = str(val).strip()
+            if not s:
+                raise ValueError(f"Missing required field: {field}")
+            if len(s) > max_len:
+                raise ValueError(f"{field} too long")
+            return s
+
+        # Validate required fields
+        try:
+            data["race_key"] = _ensure_str("race_key", max_len=120)
+            data["event"] = _ensure_str("event", max_len=120)
+            data["circuit"] = _ensure_str("circuit", max_len=120)
+        except ValueError as ve:
+            return bad_request(str(ve))
+
+        # Validate race_year as int within plausible range
+        race_year_raw = data.get("race_year")
+        try:
+            race_year_int = int(race_year_raw)
+        except Exception:
+            return bad_request("race_year must be an integer")
+
+        current_year = datetime.now().year
+        if race_year_int < 1950 or race_year_int > current_year + 1:
+            return bad_request(f"race_year must be between 1950 and {current_year + 1}")
+        data["race_year"] = race_year_int
         
         # If qualifying not provided, attempt to fetch via internal functions
         qualifying = data.get("qualifying")
@@ -1398,17 +1454,21 @@ def predict():
                     qualifying = qual_df.to_dict("records")
                 else:
                     # try Ergast live fetch
-                    if ry is None:
-                        return jsonify({"success": False, "error": "race_year required when qualifying not provided"}), 400
                     qualifying = fetch_qualifying_from_ergast(int(ry), circuit=circuit, event=event)
                     if not qualifying:
                         return jsonify({"success": False, "error": "No qualifying data available"}), 404
             except Exception as e:
-                logger.error(f"Could not fetch qualifying: {e}")
-                return jsonify({"success": False, "error": str(e)}), 500
+                return _internal_error("Could not fetch qualifying", e)
+
+        if not isinstance(qualifying, list):
+            return bad_request("qualifying must be a list")
+        if len(qualifying) > 30:
+            return bad_request("qualifying list too large")
 
         # Convert qualifying data to DataFrame
         qual_df = pd.DataFrame(qualifying)
+        if qual_df.empty:
+            return bad_request("qualifying is empty")
         
         # Generate predictions
         predictions = infer_from_qualifying(
@@ -1440,11 +1500,7 @@ def predict():
         })
     
     except Exception as e:
-        logger.error(f"Prediction error: {e}")
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+        return _internal_error("Prediction error", e)
 
 
 @app.route('/api/qualifying', methods=['GET'])
@@ -1483,8 +1539,7 @@ def get_qualifying():
             return jsonify({"success": False, "error": "No qualifying data found"}), 404
 
     except Exception as e:
-        logger.error(f"Qualifying lookup error: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
+        return _internal_error("Qualifying lookup error", e)
 
 
 def get_races_with_predictions_and_history():
@@ -1767,10 +1822,10 @@ def get_next_race_prediction():
         except Exception:
             row = None
 
-        # If we have qualifying_raw for the upcoming race, always recompute.
-        # This avoids serving stale predictions that may have been logged earlier
-        # under degraded conditions.
-        if qual_rows and isinstance(qual_rows, list) and len(qual_rows) >= 10:
+        # If we have qualifying_raw for the upcoming race, we can recompute.
+        # In production, avoid live inference in HTTP handlers; rely on the cron/worker
+        # to precompute and store predictions.
+        if config.FLASK_ENV != "production" and qual_rows and isinstance(qual_rows, list) and len(qual_rows) >= 10:
             try:
                 qual_df = pd.DataFrame(qual_rows)
                 # Ensure expected columns exist
@@ -1831,9 +1886,9 @@ def get_next_race_prediction():
             except Exception as e:
                 logger.warning(f"Live next-race inference from qualifying_raw failed: {e}")
 
-        # If we don't have a prediction yet for the upcoming race,
-        # keep showing the most recent stored prediction until new qualifying arrives.
-        if not (row and row.get("predicted")):
+        # If we don't have a prediction yet for the upcoming race, keep it pending.
+        # Do not mix races by serving an older stored prediction in production.
+        if config.FLASK_ENV != "production" and not (row and row.get("predicted")):
             try:
                 fallback = prediction_logger.get_most_recent_prediction()
             except Exception:
@@ -2082,14 +2137,7 @@ def predict_sao_paulo():
         return response
     
     except Exception as e:
-        logger.error(f"Prediction error: {e}")
-        logger.error(traceback.format_exc())
-        
-        return jsonify({
-            "success": False,
-            "error": str(e)[:200],  # Limit error message length
-            "type": type(e).__name__
-        }), 500
+        return _internal_error("/api/predict/sao-paulo failed", e)
 
 
 # =============================================================================
@@ -2392,7 +2440,7 @@ def get_season_review(year=None):
     except Exception as e:
         logger.error(f"Error building season review: {e}")
         logger.error(traceback.format_exc())
-        return {"races": [], "year": year or 0, "stats": {"accuracy_percentage": 0}, "error": str(e)}
+        return {"races": [], "year": year or 0, "stats": {"accuracy_percentage": 0}, "error": "Internal server error"}
 
 
 @app.route('/api/season-review', methods=['GET'])
@@ -2427,13 +2475,7 @@ def season_review_endpoint(year=None):
         })
         
     except Exception as e:
-        logger.error(f"Season review error: {e}")
-        logger.error(traceback.format_exc())
-        return jsonify({
-            "success": False,
-            "error": str(e)[:200],
-            "type": type(e).__name__
-        }), 500
+        return _internal_error("Season review endpoint failed", e)
 F1_POINTS_2025 = {
     1: 25,    # 1st place
     2: 18,    # 2nd place
@@ -2878,15 +2920,7 @@ def race_history():
         })
     
     except Exception as e:
-        logger.error(f"Race history error: {e}")
-        traceback.print_exc()
-        
-        # Fallback: return empty with error explanation
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "data": []
-        }), 500
+        return _internal_error("Race history endpoint failed", e)
 
 
 # ---------- New Ergast + Wikipedia endpoints ----------
@@ -2998,11 +3032,7 @@ def api_driver_standings():
         })
         
     except Exception as e:
-        logger.error(f"Error in driver_standings endpoint: {e}")
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+        return _internal_error("Driver standings endpoint failed", e)
 
 @app.route("/api/constructor-standings", methods=["GET"])
 def api_constructor_standings():
@@ -3051,11 +3081,7 @@ def api_constructor_standings():
         })
         
     except Exception as e:
-        logger.error(f"Error in constructor_standings endpoint: {e}")
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+        return _internal_error("Constructor standings endpoint failed", e)
 
 @app.route("/api/standings", methods=["GET"])
 def standings():
@@ -3082,11 +3108,7 @@ def latest_race_circuit():
         })
         
     except Exception as e:
-        logger.error(f"Error in latest_race_circuit endpoint: {e}")
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+        return _internal_error("Latest race circuit endpoint failed", e)
 
 
 # Cache for qualifying session to avoid reloading
@@ -3240,11 +3262,7 @@ def latest_qualifying_session_data():
         }), 200
     
     except Exception as e:
-        logger.error(f"Error in latest_qualifying_session endpoint: {e}")
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+        return _internal_error("Latest qualifying session endpoint failed", e)
 
 
 @app.route('/api/driver-telemetry', methods=['POST'])
@@ -3361,12 +3379,7 @@ def driver_telemetry_data():
         }), 200
     
     except Exception as e:
-        logger.error(f"Error in driver_telemetry endpoint: {str(e)[:200]}")
-        logger.error(traceback.format_exc())
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+        return _internal_error("Driver telemetry endpoint failed", e)
 
 
 @app.route('/api/qualifying-circuit-telemetry')
@@ -3596,10 +3609,7 @@ def qualifying_circuit_telemetry():
         except Exception as cache_err:
             logger.error(f"Could not retrieve stale cache: {cache_err}")
         
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+        return _internal_error("Qualifying circuit telemetry endpoint failed", e)
 
 
 @app.route('/api/driver-circuit-details/<driver_code>', methods=['GET'])
@@ -3704,12 +3714,7 @@ def driver_circuit_details(driver_code):
         }), 200
     
     except Exception as e:
-        logger.error(f"Error in driver_circuit_details: {str(e)[:200]}")
-        logger.error(traceback.format_exc())
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+        return _internal_error("Driver circuit details endpoint failed", e)
 
 
 # ========== MLflow Model Registry Endpoints ==========
@@ -3727,11 +3732,7 @@ def model_registry():
             "data": registry
         }), 200
     except Exception as e:
-        logger.error(f"Error fetching model registry: {e}")
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+        return _internal_error("Model registry endpoint failed", e)
 
 
 @app.route("/api/model-metrics", methods=["GET"])
@@ -3748,11 +3749,7 @@ def model_metrics():
             "timestamp": datetime.now().isoformat()
         }), 200
     except Exception as e:
-        logger.error(f"Error fetching model metrics: {e}")
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+        return _internal_error("Model metrics endpoint failed", e)
 
 
 @app.route("/api/mlflow-status", methods=["GET"])
@@ -3774,12 +3771,7 @@ def mlflow_status():
             "timestamp": datetime.now().isoformat()
         }), 200
     except Exception as e:
-        logger.error(f"Error in mlflow_status: {e}")
-        return jsonify({
-            "success": False,
-            "status": "error",
-            "error": str(e)
-        }), 500
+        return _internal_error("MLflow status endpoint failed", e)
 
 
 # =============================================================================

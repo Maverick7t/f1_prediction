@@ -295,12 +295,12 @@ export default function Dashboard() {
               gap: '20px'
             }}>
               <RaceInfoCard
-                raceName={nextRace?.raceName || "Australian Grand Prix"}
-                dates={nextRace?.dateStart ? nextRace.dateStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase() : "MARCH 2026"}
-                time={nextRace?.dateStart ? nextRace.dateStart.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }) : "TBD"}
-                track={nextRace?.circuitName || "Albert Park Circuit"}
-                country={nextRace?.country || "Australia"}
-                circuitImage={nextRace?.circuitImage || "https://media.formula1.com/image/upload/f_auto,c_limit,w_1440,q_auto/content/dam/fom-website/2018-redesign-assets/Circuit%20maps%2016x9/Australia_Circuit"}
+                raceName={nextRace?.error ? 'Next race unavailable' : (nextRace?.raceName || 'TBD')}
+                dates={nextRace?.dateStart ? nextRace.dateStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase() : 'TBD'}
+                time={nextRace?.dateStart ? nextRace.dateStart.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }) : 'TBD'}
+                track={nextRace?.error ? 'TBD' : (nextRace?.circuitName || 'TBD')}
+                country={nextRace?.error ? undefined : nextRace?.country}
+                circuitImage={nextRace?.error ? null : nextRace?.circuitImage}
               />
               <WinnerPredictionCard
                 percentage={winnerPrediction?.percentage || 72}
