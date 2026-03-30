@@ -212,7 +212,7 @@ export async function fetchSaoPauloPredictions() {
                 top3_prediction: [],
                 full_predictions: [],
                 race_history: raceHistory,
-                message: 'Waiting for next race in 2026 season...'
+                message: 'Waiting for next race season...'
             };
         }
 
