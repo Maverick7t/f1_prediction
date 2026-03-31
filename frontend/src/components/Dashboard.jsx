@@ -32,9 +32,74 @@ export default function Dashboard() {
   useEffect(() => {
     let cancelled = false
 
+    const DASHBOARD_CACHE_KEY = 'f1_dashboard_cache_v1'
+    const DASHBOARD_CACHE_TTL_MS = 12 * 60 * 60 * 1000 // 12 hours
+
+    function loadDashboardCache() {
+      try {
+        const raw = localStorage.getItem(DASHBOARD_CACHE_KEY)
+        if (!raw) return null
+        const parsed = JSON.parse(raw)
+        const savedAt = parsed?.savedAt
+        if (!savedAt || typeof savedAt !== 'number') return null
+        if (Date.now() - savedAt > DASHBOARD_CACHE_TTL_MS) return null
+        return parsed
+      } catch {
+        return null
+      }
+    }
+
+    function saveDashboardCache(payload) {
+      try {
+        localStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify({
+          savedAt: Date.now(),
+          ...payload
+        }))
+      } catch {
+        // ignore quota/security errors
+      }
+    }
+
+    const cached = loadDashboardCache()
+    const hasCachedData = Boolean(cached)
+
+    // Hydrate UI immediately from last-known data to mask backend cold starts.
+    if (cached && !cancelled) {
+      if (cached.nextRace !== undefined) setNextRace(cached.nextRace)
+      if (cached.openF1Drivers !== undefined) setOpenF1Drivers(cached.openF1Drivers || [])
+      if (cached.constructorStandings !== undefined) setConstructorStandings(cached.constructorStandings || [])
+      if (cached.raceHistory !== undefined) setRaceHistory(cached.raceHistory || [])
+
+      const cachedPredictions = cached.predictions
+      if (cachedPredictions) {
+        if (cachedPredictions.isOffSeason && cachedPredictions.seasonReview) {
+          setIsOffSeason(true)
+          setSeasonReview(cachedPredictions.seasonReview)
+        } else {
+          setIsOffSeason(false)
+        }
+
+        const drivers = transformPredictionsToDriverData(cachedPredictions)
+        setDriverData(drivers)
+
+        if (cachedPredictions.winner_prediction) {
+          setWinnerPrediction({
+            driver: cachedPredictions.winner_prediction.driver,
+            team: cachedPredictions.winner_prediction.team,
+            percentage: cachedPredictions.winner_prediction.percentage
+          })
+        }
+
+        setError(null)
+      }
+
+      setLoading(false)
+    }
+
     async function loadPredictions() {
       try {
-        setLoading(true)
+        // Only show the blocking loader when we don't have any cached UI state.
+        if (!hasCachedData) setLoading(true)
 
         // Run all independent API calls in parallel with timeouts
         const [raceResult, driversResult, constructorsResult, raceHistoryResult, predictionsResult] =
@@ -55,7 +120,7 @@ export default function Dashboard() {
           console.log('✓ Next race loaded:', raceResult.value?.raceName)
         } else {
           console.error('❌ Failed to load next race info:', raceResult.reason)
-          setNextRace({ error: raceResult.reason?.message })
+          if (!hasCachedData) setNextRace({ error: raceResult.reason?.message })
         }
 
         // Process drivers
@@ -75,7 +140,7 @@ export default function Dashboard() {
           setRaceHistory(raceHistoryResult.value || [])
           console.log('✓ Race history loaded:', (raceHistoryResult.value || []).length, 'races')
         } else {
-          setRaceHistory([])
+          if (!hasCachedData) setRaceHistory([])
         }
 
         // Process predictions
@@ -106,24 +171,36 @@ export default function Dashboard() {
 
           setError(null)
           console.log('✓ All predictions loaded from backend')
+
+          // Persist last successful payloads for cold-start masking
+          saveDashboardCache({
+            nextRace: raceResult.status === 'fulfilled' ? raceResult.value : cached?.nextRace,
+            openF1Drivers: driversResult.status === 'fulfilled' ? (driversResult.value || []) : (cached?.openF1Drivers || []),
+            constructorStandings: constructorsResult.status === 'fulfilled' ? (constructorsResult.value || []) : (cached?.constructorStandings || []),
+            raceHistory: raceHistoryResult.status === 'fulfilled' ? (raceHistoryResult.value || []) : (cached?.raceHistory || []),
+            predictions
+          })
         } else {
           console.error('❌ Failed to load predictions:', predictionsResult.reason)
 
-          // Try to load season review directly as fallback
-          try {
-            if (cancelled) return
-            const review = await fetchSeasonReview()
-            if (cancelled) return
-            setSeasonReview(review)
-            setIsOffSeason(true)
-            console.log(`✓ Fallback: loaded ${review.year} season review`)
-          } catch (reviewErr) {
-            console.error('❌ Season review fallback also failed:', reviewErr)
-          }
+          // If we already hydrated from cache, keep showing stale data.
+          if (!hasCachedData) {
+            // Try to load season review directly as fallback
+            try {
+              if (cancelled) return
+              const review = await fetchSeasonReview()
+              if (cancelled) return
+              setSeasonReview(review)
+              setIsOffSeason(true)
+              console.log(`✓ Fallback: loaded ${review.year} season review`)
+            } catch (reviewErr) {
+              console.error('❌ Season review fallback also failed:', reviewErr)
+            }
 
-          setError('Failed to load predictions from API. Showing season review instead.')
-          setDriverData([])
-          setWinnerPrediction(null)
+            setError('Failed to load predictions from API. Showing season review instead.')
+            setDriverData([])
+            setWinnerPrediction(null)
+          }
         }
       } catch (outerErr) {
         console.error('❌ Unexpected error in loadPredictions:', outerErr)
@@ -131,7 +208,7 @@ export default function Dashboard() {
           setError('An unexpected error occurred while loading data.')
         }
       } finally {
-        if (!cancelled) {
+        if (!cancelled && !hasCachedData) {
           setLoading(false)
         }
       }
