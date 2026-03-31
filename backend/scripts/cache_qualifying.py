@@ -9,7 +9,7 @@ USAGE (Run AFTER each race weekend):
 EXAMPLES:
     python scripts/cache_qualifying.py 2025 "Qatar Grand Prix"
     python scripts/cache_qualifying.py 2025  # Auto-detects latest
-    python scripts/cache_qualifying.py       # Auto-detects 2025 latest
+    python scripts/cache_qualifying.py       # Auto-detects current year latest
 
 This script:
 1. Loads qualifying session from FastF1 (takes ~30 seconds)
@@ -235,7 +235,7 @@ def cache_qualifying(year: int, event_name: str = None):
 
 def main():
     """Parse arguments and run cache"""
-    year = int(sys.argv[1]) if len(sys.argv) > 1 else 2025
+    year = int(sys.argv[1]) if len(sys.argv) > 1 else datetime.now().year
     event_name = sys.argv[2] if len(sys.argv) > 2 else None
     
     logger.info(f"\n📍 Cache mode: year={year}, event={event_name or 'auto-detect'}\n")

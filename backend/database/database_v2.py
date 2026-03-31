@@ -258,6 +258,56 @@ class PredictionLogger:
             logger.error(f"Failed to fetch most recent prediction: {e}")
             return None
 
+    def get_most_recent_prediction_with_full_predictions(self, *, limit: int = 200) -> Optional[Dict[str, Any]]:
+        """Fetch the most recent prediction row that includes driver-level predictions.
+
+        Some historical rows only store summary metadata (winner/top3) in `full_predictions`.
+        The frontend driver cards require a non-empty `full_predictions` list.
+        """
+        try:
+            df = self.get_prediction_history(limit=int(limit))
+            if df is None or df.empty:
+                return None
+
+            for _, r in df.iterrows():
+                row = r.to_dict()
+
+                # Normalize pandas NaN/NaT to None
+                for key, value in list(row.items()):
+                    try:
+                        if pd.isna(value):
+                            row[key] = None
+                    except Exception:
+                        pass
+
+                predicted = row.get("predicted")
+                if not predicted:
+                    continue
+
+                fp = row.get("full_predictions")
+                if isinstance(fp, str):
+                    try:
+                        fp = json.loads(fp)
+                    except Exception:
+                        fp = None
+
+                # Support multiple shapes:
+                # - { ..., "full_predictions": [ ... ] }
+                # - { ..., "predictions": { "full_predictions": [ ... ] } }
+                fp_data = fp
+                if isinstance(fp, dict) and isinstance(fp.get("predictions"), dict):
+                    fp_data = fp.get("predictions")
+
+                if isinstance(fp_data, dict):
+                    preds = fp_data.get("full_predictions")
+                    if isinstance(preds, list) and len(preds) > 0:
+                        return row
+
+            return None
+        except Exception as e:
+            logger.error(f"Failed to fetch most recent prediction with full_predictions: {e}")
+            return None
+
     def get_predictions_missing_actual(self, *, limit: int = 200) -> List[Dict[str, Any]]:
         """Return prediction rows that have not been backfilled with actual winner yet."""
         if self._mode == "supabase":
@@ -497,6 +547,18 @@ class QualifyingCache:
                 if response.data:
                     logger.info(f"✓ Found latest cached qualifying: {response.data[0].get('race_key')}")
                     return response.data[0]['qualifying_data']
+
+                # If nothing is currently valid, fall back to the most recent cached
+                # entry even if it is expired. This keeps the UI populated until a
+                # new cache run updates Supabase.
+                stale = self.supabase.table('qualifying_cache') \
+                    .select('qualifying_data, expires_at, race_key') \
+                    .order('cached_at', desc=True) \
+                    .limit(1) \
+                    .execute()
+                if stale.data:
+                    logger.info(f"⚠ Using stale cached qualifying: {stale.data[0].get('race_key')}")
+                    return stale.data[0]['qualifying_data']
             except Exception as e:
                 logger.error(f"Cache read failed: {e}")
         
