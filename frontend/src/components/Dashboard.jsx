@@ -14,6 +14,18 @@ import { fetchSaoPauloPredictions, transformPredictionsToDriverData, fetchNextRa
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
+function coerceValidDate(value) {
+  if (!value) return null
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value
+  }
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = new Date(value)
+    return Number.isNaN(parsed.getTime()) ? null : parsed
+  }
+  return null
+}
+
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('current')
   const [driverData, setDriverData] = useState([])
@@ -35,11 +47,25 @@ export default function Dashboard() {
     const DASHBOARD_CACHE_KEY = 'f1_dashboard_cache_v1'
     const DASHBOARD_CACHE_TTL_MS = 12 * 60 * 60 * 1000 // 12 hours
 
+    function reviveCachedDashboard(parsed) {
+      if (!parsed || typeof parsed !== 'object') return parsed
+      if (!parsed.nextRace || typeof parsed.nextRace !== 'object') return parsed
+
+      return {
+        ...parsed,
+        nextRace: {
+          ...parsed.nextRace,
+          dateStart: coerceValidDate(parsed.nextRace.dateStart),
+          dateEnd: coerceValidDate(parsed.nextRace.dateEnd)
+        }
+      }
+    }
+
     function loadDashboardCache() {
       try {
         const raw = localStorage.getItem(DASHBOARD_CACHE_KEY)
         if (!raw) return null
-        const parsed = JSON.parse(raw)
+        const parsed = reviveCachedDashboard(JSON.parse(raw))
         const savedAt = parsed?.savedAt
         if (!savedAt || typeof savedAt !== 'number') return null
         if (Date.now() - savedAt > DASHBOARD_CACHE_TTL_MS) return null
@@ -221,6 +247,8 @@ export default function Dashboard() {
     }
   }, [])
 
+  const nextRaceDateStart = coerceValidDate(nextRace?.dateStart)
+
   return (
     <div className="dashboard-root" style={{
       backgroundColor: '#1a1a1a',
@@ -373,8 +401,8 @@ export default function Dashboard() {
             }}>
               <RaceInfoCard
                 raceName={nextRace?.error ? 'Next race unavailable' : (nextRace?.raceName || 'TBD')}
-                dates={nextRace?.dateStart ? nextRace.dateStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase() : 'TBD'}
-                time={nextRace?.dateStart ? nextRace.dateStart.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }) : 'TBD'}
+                dates={nextRaceDateStart ? nextRaceDateStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase() : 'TBD'}
+                time={nextRaceDateStart ? nextRaceDateStart.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }) : 'TBD'}
                 track={nextRace?.error ? 'TBD' : (nextRace?.circuitName || 'TBD')}
                 country={nextRace?.error ? undefined : nextRace?.country}
                 circuitImage={nextRace?.error ? null : nextRace?.circuitImage}
