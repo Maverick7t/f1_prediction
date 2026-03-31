@@ -340,6 +340,17 @@ export async function fetchNextRace() {
 
         const raceData = result.race || result;
 
+        // The backend may return a relative URL like "/images/<file>".
+        // On Vercel, that would resolve to the Vercel domain, not the API.
+        // Normalize to an absolute URL rooted at the API base.
+        let circuitImageUrl = result.circuit_image_url;
+        if (typeof circuitImageUrl === 'string') {
+            const trimmedBase = API_BASE_URL.replace(/\/$/, '');
+            if (circuitImageUrl.startsWith('/')) {
+                circuitImageUrl = `${trimmedBase}${circuitImageUrl}`;
+            }
+        }
+
         // Cache and return the result
         cache.nextRace = {
             sessionName: 'Race',
@@ -348,7 +359,7 @@ export async function fetchNextRace() {
             location: raceData.circuit,
             circuitName: raceData.circuit,
             circuitKey: raceData.circuit?.toLowerCase().replace(/\s+/g, '-'),
-            circuitImage: result.circuit_image_url,
+            circuitImage: circuitImageUrl,
             dateStart: new Date(raceData.date),
             dateEnd: new Date(raceData.date),
             year: raceData.year,
