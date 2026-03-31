@@ -10,12 +10,11 @@ FIXES: Use current year instead of hardcoded 2025, Python 3.12.5 with pyarrow wh
 from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
 import pandas as pd
-import joblib
 import numpy as np
 import os
 import logging
 import requests
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 import time
 from pathlib import Path
 import hashlib
@@ -24,16 +23,10 @@ from datetime import datetime
 import uuid
 import json
 import traceback
+import threading
 
 # Import configuration
 from utils.config import config, ensure_directories, print_config
-
-from services.mlflow_manager import (
-    register_model, 
-    log_prediction, 
-    get_model_registry,
-    get_prediction_accuracy
-)
 
 # Import new feature store for efficient feature retrieval
 from services.feature_store import get_feature_store, FeatureStore
@@ -43,9 +36,6 @@ from database.database_v2 import get_prediction_logger, PredictionLogger, get_qu
 
 # Import file-based caching for expensive queries
 from utils.file_cache import get_file_cache, CACHE_KEYS, CACHE_TTL
-
-# Import background scheduler for auto-caching qualifying data
-from services.scheduler import start_scheduler, stop_scheduler
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -291,128 +281,167 @@ DRIVER_CODE_MAP = {
 # Configure FastF1 cache
 fastf1.Cache.enable_cache(str(config.FASTF1_CACHE_DIR))
 logger.info(f"FastF1 cache enabled at: {config.FASTF1_CACHE_DIR}")
-try:
-    import json
 
-    def _load_meta_compat(path: str):
-        try:
-            p = Path(path)
-            if p.exists() and p.suffix.lower() == ".json":
-                payload = json.loads(p.read_text(encoding="utf-8"))
-                if isinstance(payload, dict) and "feature_cols" in payload and "encoders" in payload:
-                    return payload
-        except Exception:
-            pass
-        return None
+# =============================================================================
+# LAZY-LOADED INFERENCE ASSETS (Models + Encoders + FeatureStore)
+# =============================================================================
+# Keep startup fast: don't load large model files or Parquet snapshots at import
+# time. Only initialize these when an inference endpoint is actually called.
 
-    def _load_meta_any() -> dict:
-        compat = _load_meta_compat(META_COMPAT_FILE)
-        if compat is not None:
-            logger.info("✓ Loaded metadata from compat JSON")
-            return compat
 
-        meta_obj = joblib.load(META_FILE)
-        if not isinstance(meta_obj, dict):
-            raise TypeError(f"metadata.joblib is not a dict: {type(meta_obj)}")
-        logger.info("✓ Loaded metadata from joblib")
-        return meta_obj
+class InferenceAssetsUnavailableError(RuntimeError):
+    """Raised when inference assets (models/encoders/feature store) cannot be loaded."""
 
-    def _load_xgb_classifier_any(native_path: str, joblib_path: str):
-        """Prefer native XGBoost model file; fallback to joblib."""
-        try:
-            p = Path(native_path)
-            if p.exists() and p.suffix.lower() in {".json", ".ubj"}:
-                import xgboost as xgb
 
-                clf = xgb.XGBClassifier()
-                clf.load_model(str(p))
-                logger.info(f"✓ Loaded XGBoost model from native file: {p.name}")
-                return clf
-        except Exception as e:
-            logger.warning(f"⚠ Failed to load native XGBoost model ({native_path}): {e}")
+meta = None
+encoders = {}
+feature_cols = []
+model_win = None
+model_pod = None
+feature_store = None
 
-        obj = joblib.load(joblib_path)
-        if isinstance(obj, dict) and "model" in obj:
-            logger.info(f"✓ Loaded XGBoost model from joblib dict: {Path(joblib_path).name}")
-            return obj["model"]
-        logger.info(f"✓ Loaded XGBoost model from joblib: {Path(joblib_path).name}")
-        return obj
+_inference_assets_loaded = False
+_inference_assets_loaded_at = None
+_inference_assets_load_error = None
+_inference_assets_lock = threading.Lock()
 
-    meta = _load_meta_any()
-    encoders = meta["encoders"]
-    feature_cols = meta["feature_cols"]
-    model_win = _load_xgb_classifier_any(MODEL_WIN_JSON_FILE, MODEL_WIN_FILE)
-    model_pod = _load_xgb_classifier_any(MODEL_POD_JSON_FILE, MODEL_POD_FILE)
-    
-    # NEW: Use feature store for efficient feature retrieval
-    feature_store = get_feature_store(config)
-    logger.info(f"✓ Feature store initialized: {feature_store.health_check()}")
-    
-    # NEW: Initialize Supabase prediction logger
-    prediction_logger = get_prediction_logger(config)
-    logger.info(f"✓ Prediction logger initialized (mode: {prediction_logger.mode})")
-    
-    # Historical training dataset loading removed for production simplicity.
-    # We rely on qualifying + FeatureStore snapshots + Supabase pipeline tables.
-    # Keep an empty DataFrame with expected columns so legacy endpoints don't crash.
-    hist_data = pd.DataFrame(
-        columns=[
-            "race_key",
-            "race_year",
-            "event",
-            "circuit",
-            "event_date",
-            "driver",
-            "team",
-            "qualifying_position",
-            "finishing_position",
-            "points",
-            "EloRating",
-            "RecentFormAvg",
-            "CircuitHistoryAvg",
-            "DriverExperienceScore",
-            "TeamPerfScore",
-        ]
-    )
-    logger.info("⚠ Historical training dataset disabled (qualifying-only production mode)")
-    logger.info("Models and data loaded successfully")
-    
-    # Register models in MLflow (production models)
+
+def _load_meta_compat(path: str):
     try:
-        register_model(
-            model_name="xgb_winner",
-            model_version="v3",
-            model_path=MODEL_WIN_FILE,
-            metrics={
-                "accuracy": 0.82,
-                "f1_score": 0.79,
-                "precision": 0.85,
-                "recall": 0.75
-            },
-            features=feature_cols,
-            training_data_version="2018-2024"
-        )
-        
-        register_model(
-            model_name="xgb_podium",
-            model_version="v2",
-            model_path=MODEL_POD_FILE,
-            metrics={
-                "accuracy": 0.76,
-                "f1_score": 0.73,
-                "precision": 0.79,
-                "recall": 0.68
-            },
-            features=feature_cols,
-            training_data_version="2018-2024"
-        )
-        logger.info("✓ Models registered in MLflow")
-    except Exception as mlflow_err:
-        logger.warning(f"MLflow registration warning: {mlflow_err}")
-        
-except Exception as e:
-    logger.error(f"Error loading models: {e}")
-    raise
+        p = Path(path)
+        if p.exists() and p.suffix.lower() == ".json":
+            payload = json.loads(p.read_text(encoding="utf-8"))
+            if isinstance(payload, dict) and "feature_cols" in payload and "encoders" in payload:
+                return payload
+    except Exception:
+        pass
+    return None
+
+
+def _load_meta_any() -> dict:
+    compat = _load_meta_compat(META_COMPAT_FILE)
+    if compat is not None:
+        logger.info("✓ Loaded metadata from compat JSON")
+        return compat
+
+    import joblib  # type: ignore
+
+    meta_obj = joblib.load(META_FILE)
+    if not isinstance(meta_obj, dict):
+        raise TypeError(f"metadata.joblib is not a dict: {type(meta_obj)}")
+    logger.info("✓ Loaded metadata from joblib")
+    return meta_obj
+
+
+def _load_xgb_classifier_any(native_path: str, joblib_path: str):
+    """Prefer native XGBoost model file; fallback to joblib."""
+    try:
+        p = Path(native_path)
+        if p.exists() and p.suffix.lower() in {".json", ".ubj"}:
+            import xgboost as xgb
+
+            clf = xgb.XGBClassifier()
+            clf.load_model(str(p))
+            logger.info(f"✓ Loaded XGBoost model from native file: {p.name}")
+            return clf
+    except Exception as e:
+        logger.warning(f"⚠ Failed to load native XGBoost model ({native_path}): {e}")
+
+    import joblib  # type: ignore
+
+    obj = joblib.load(joblib_path)
+    if isinstance(obj, dict) and "model" in obj:
+        logger.info(f"✓ Loaded XGBoost model from joblib dict: {Path(joblib_path).name}")
+        return obj["model"]
+    logger.info(f"✓ Loaded XGBoost model from joblib: {Path(joblib_path).name}")
+    return obj
+
+
+def ensure_inference_assets_loaded():
+    """Load inference-time dependencies (models + feature store) on-demand."""
+    global meta
+    global encoders
+    global feature_cols
+    global model_win
+    global model_pod
+    global feature_store
+    global _inference_assets_loaded
+    global _inference_assets_loaded_at
+    global _inference_assets_load_error
+
+    if _inference_assets_loaded:
+        return
+
+    with _inference_assets_lock:
+        if _inference_assets_loaded:
+            return
+
+        meta_json = Path(META_COMPAT_FILE)
+        meta_joblib = Path(META_FILE)
+        if not (meta_json.exists() or meta_joblib.exists()):
+            raise InferenceAssetsUnavailableError(
+                "Model metadata not found (metadata_compat.json or metadata.joblib)"
+            )
+        if not (Path(MODEL_WIN_JSON_FILE).exists() or Path(MODEL_WIN_FILE).exists()):
+            raise InferenceAssetsUnavailableError("Winner model file not found")
+        if not (Path(MODEL_POD_JSON_FILE).exists() or Path(MODEL_POD_FILE).exists()):
+            raise InferenceAssetsUnavailableError("Podium model file not found")
+
+        try:
+            meta_local = _load_meta_any()
+            encoders_local = meta_local["encoders"]
+            feature_cols_local = meta_local["feature_cols"]
+            model_win_local = _load_xgb_classifier_any(MODEL_WIN_JSON_FILE, MODEL_WIN_FILE)
+            model_pod_local = _load_xgb_classifier_any(MODEL_POD_JSON_FILE, MODEL_POD_FILE)
+            feature_store_local = get_feature_store(config)
+
+            meta = meta_local
+            encoders = encoders_local
+            feature_cols = feature_cols_local
+            model_win = model_win_local
+            model_pod = model_pod_local
+            feature_store = feature_store_local
+
+            _inference_assets_loaded = True
+            _inference_assets_loaded_at = datetime.now().isoformat()
+            _inference_assets_load_error = None
+            logger.info("✓ Inference assets loaded (lazy)")
+        except Exception as e:
+            _inference_assets_loaded = False
+            _inference_assets_load_error = str(e)
+            logger.error(f"Inference asset load failed: {e}")
+            logger.error(traceback.format_exc())
+            raise InferenceAssetsUnavailableError("Inference assets failed to load") from e
+
+
+# Initialize Supabase prediction logger (used by most endpoints)
+prediction_logger = get_prediction_logger(config)
+logger.info(f"✓ Prediction logger initialized (mode: {prediction_logger.mode})")
+
+# Historical training dataset loading removed for production simplicity.
+# We rely on qualifying + FeatureStore snapshots + Supabase pipeline tables.
+# Keep an empty DataFrame with expected columns so legacy endpoints don't crash.
+hist_data = pd.DataFrame(
+    columns=[
+        "race_key",
+        "race_year",
+        "event",
+        "circuit",
+        "event_date",
+        "driver",
+        "team",
+        "qualifying_position",
+        "finishing_position",
+        "points",
+        "EloRating",
+        "RecentFormAvg",
+        "CircuitHistoryAvg",
+        "DriverExperienceScore",
+        "TeamPerfScore",
+    ]
+)
+logger.info("⚠ Historical training dataset disabled (qualifying-only production mode)")
+logger.info("Inference models will load on-demand")
 
 # ---------- helper: simple file cache ----------
 def cache_path_for_key(prefix: str, key: str, ext: str):
@@ -421,43 +450,122 @@ def cache_path_for_key(prefix: str, key: str, ext: str):
     return IMG_CACHE / f"{prefix}_{h}.{ext}"
 
 # ---------- helper: fetch image from Wikipedia (page image) ----------
-def fetch_wikipedia_image(entity_name: str, fallback_size=600):
-    """
-    Returns local path to cached image (JPEG/PNG) or None.
-    Uses MediaWiki 'pageimages' & 'original' where available.
-    """
-    key = entity_name.strip()
-    p = cache_path_for_key("wiki", key, "jpg")
-    if p.exists():
-        return str(p)
+def _wikipedia_page_image_url(entity_name: str, *, fallback_size: int = 600):
+    """Return a representative image URL for a Wikipedia page.
 
+    Tries exact title lookup first; falls back to a search query.
+    Prefers `original` image when available, otherwise uses `thumbnail`.
+    """
+
+    def _query_title(title: str):
+        if not title:
+            return None
+
+        r = requests.get(
+            "https://en.wikipedia.org/w/api.php",
+            params={
+                "action": "query",
+                "format": "json",
+                "titles": title,
+                "prop": "pageimages",
+                # Ask for both; not all pages have `original`.
+                "piprop": "original|thumbnail",
+                "pithumbsize": int(fallback_size),
+            },
+            timeout=8,
+        )
+        r.raise_for_status()
+        pages = (r.json() or {}).get("query", {}).get("pages", {})
+        for _, page in (pages or {}).items():
+            orig = (page or {}).get("original") or {}
+            thumb = (page or {}).get("thumbnail") or {}
+            return orig.get("source") or thumb.get("source")
+        return None
+
+    title = (entity_name or "").strip()
+    if not title:
+        return None
+
+    # 1) Exact title lookup
     try:
-        # 1) search page
+        url = _query_title(title)
+        if url:
+            return url
+    except Exception as e:
+        logger.debug(f"Wikipedia image title lookup failed for '{title}': {e}")
+
+    # 2) Search fallback
+    try:
         s = requests.get(
             "https://en.wikipedia.org/w/api.php",
             params={
                 "action": "query",
                 "format": "json",
-                "titles": entity_name,
-                "prop": "pageimages",
-                "piprop": "original",
+                "list": "search",
+                "srsearch": title,
+                "srlimit": 1,
             },
-            timeout=8
+            timeout=8,
         )
         s.raise_for_status()
-        pages = s.json().get("query", {}).get("pages", {})
-        for pageid, page in pages.items():
-            orig = page.get("original", {})
-            img_url = orig.get("source")
-            if img_url:
-                r = requests.get(img_url, timeout=10, stream=True)
-                r.raise_for_status()
-                with open(p, "wb") as fh:
-                    for chunk in r.iter_content(1024*8):
-                        fh.write(chunk)
-                return str(p)
+        results = (s.json() or {}).get("query", {}).get("search", [])
+        if results and isinstance(results, list):
+            best_title = (results[0] or {}).get("title")
+            if best_title:
+                return _query_title(str(best_title))
     except Exception as e:
-        logger.debug(f"Wikipedia image fetch failed for {entity_name}: {e}")
+        logger.debug(f"Wikipedia image search failed for '{title}': {e}")
+
+    return None
+
+
+def fetch_wikipedia_image(entity_name: str, fallback_size=600):
+    """
+    Returns local path to cached image (jpg/png/webp/gif/svg) or None.
+    Uses MediaWiki 'pageimages' and caches the downloaded asset.
+    """
+    key = (entity_name or "").strip()
+    if not key:
+        return None
+
+    h = hashlib.sha1(key.encode()).hexdigest()
+
+    # Return any existing cached file regardless of extension.
+    for ext in ("jpg", "jpeg", "png", "webp", "gif", "svg"):
+        existing = IMG_CACHE / f"wiki_{h}.{ext}"
+        if existing.exists():
+            return str(existing)
+
+    img_url = None
+    try:
+        img_url = _wikipedia_page_image_url(key, fallback_size=int(fallback_size))
+    except Exception:
+        img_url = None
+
+    if not img_url:
+        return None
+
+    allowed_ext = {"jpg", "jpeg", "png", "webp", "gif", "svg"}
+    try:
+        suffix = Path(urlparse(img_url).path).suffix.lower()
+        ext = suffix.lstrip(".") if suffix else "jpg"
+        if ext not in allowed_ext:
+            ext = "jpg"
+    except Exception:
+        ext = "jpg"
+
+    p = IMG_CACHE / f"wiki_{h}.{ext}"
+
+    try:
+        r = requests.get(img_url, timeout=12, stream=True)
+        r.raise_for_status()
+        with open(p, "wb") as fh:
+            for chunk in r.iter_content(1024 * 8):
+                if chunk:
+                    fh.write(chunk)
+        return str(p)
+    except Exception as e:
+        logger.debug(f"Wikipedia image download failed for '{key}': {e}")
 
     return None
 
@@ -1008,6 +1116,9 @@ def infer_from_qualifying(qual_df, race_key, race_year, event, circuit, skip_cac
     import time
     start = time.time()
 
+    # Lazy-load models + encoders + FeatureStore only when inference is requested.
+    ensure_inference_assets_loaded()
+
     race_rows = build_race_rows_from_qualifying(qual_df, race_key, race_year, event, circuit)
 
     # Step 6: Prepare feature matrix
@@ -1057,7 +1168,9 @@ def infer_from_qualifying(qual_df, race_key, race_year, event, circuit, skip_cac
     # Log to MLflow (skip for batch operations like season review)
     if not skip_cache:
         try:
-            log_prediction(
+            from services.mlflow_manager import log_prediction as _mlflow_log_prediction
+
+            _mlflow_log_prediction(
                 race_name=event,
                 predicted_winner=winner["driver"],
                 confidence=winner_pct,
@@ -1296,25 +1409,38 @@ def home():
 @app.route('/api/health')
 def health_check():
     """Detailed health check with feature store status"""
-    fs_health = feature_store.health_check()
+    fs_health = None
+    fs_initialized = feature_store is not None
+    if fs_initialized:
+        try:
+            fs_health = feature_store.health_check()
+        except Exception:
+            fs_health = None
+            fs_initialized = False
+
     return jsonify({
         "status": "healthy",
         "version": "2.0.0",
         "architecture": "optimized",
         "feature_store": {
-            "initialized": True,
-            "drivers_cached": fs_health["drivers_in_memory"],
-            "parquet_available": fs_health["parquet_exists"],
-            "redis_connected": fs_health["redis_connected"],
-            "lru_cache": fs_health["lru_cache_info"]
+            "initialized": fs_initialized,
+            "drivers_cached": (fs_health or {}).get("drivers_in_memory", 0),
+            "parquet_available": (fs_health or {}).get("parquet_exists", False),
+            "redis_connected": (fs_health or {}).get("redis_connected", False),
+            "lru_cache": (fs_health or {}).get("lru_cache_info", {})
+        },
+        "inference_assets": {
+            "loaded": bool(_inference_assets_loaded),
+            "loaded_at": _inference_assets_loaded_at,
+            "last_error": bool(_inference_assets_load_error),
         },
         "prediction_logger": {
             "mode": prediction_logger.mode,
             "supabase_connected": prediction_logger.mode == "supabase"
         },
         "data": {
-            "historical_format": "parquet" if fs_health["parquet_exists"] else "csv",
-            "compression": "5.5x" if fs_health["parquet_exists"] else "none"
+            "historical_format": "parquet" if (fs_health or {}).get("parquet_exists", False) else "csv",
+            "compression": "5.5x" if (fs_health or {}).get("parquet_exists", False) else "none"
         }
     })
 
@@ -1471,13 +1597,19 @@ def predict():
             return bad_request("qualifying is empty")
         
         # Generate predictions
-        predictions = infer_from_qualifying(
-            qual_df,
-            data["race_key"],
-            data["race_year"],
-            data["event"],
-            data["circuit"]
-        )
+        try:
+            predictions = infer_from_qualifying(
+                qual_df,
+                data["race_key"],
+                data["race_year"],
+                data["event"],
+                data["circuit"],
+            )
+        except InferenceAssetsUnavailableError as ie:
+            return jsonify({
+                "success": False,
+                "error": str(ie),
+            }), 503
         
         # Log prediction to database (Supabase/CSV)
         try:
@@ -1886,16 +2018,21 @@ def get_next_race_prediction():
             except Exception as e:
                 logger.warning(f"Live next-race inference from qualifying_raw failed: {e}")
 
-        # If we don't have a prediction yet for the upcoming race, keep it pending.
-        # Do not mix races by serving an older stored prediction in production.
-        if config.FLASK_ENV != "production" and not (row and row.get("predicted")):
+        used_stale_fallback = False
+
+        # If we don't have a prediction yet for the upcoming race, fall back to the
+        # most recent stored prediction so the UI can continue to show driver cards.
+        if not (row and row.get("predicted")):
             try:
-                fallback = prediction_logger.get_most_recent_prediction()
+                fallback = prediction_logger.get_most_recent_prediction_with_full_predictions()
+                if not fallback:
+                    fallback = prediction_logger.get_most_recent_prediction()
             except Exception:
                 fallback = None
 
             if fallback and fallback.get("predicted"):
                 row = fallback
+                used_stale_fallback = True
 
                 # Override display metadata to match the fallback row (avoid mixing race labels).
                 race_name = fallback.get("race") or race_name
@@ -1933,7 +2070,7 @@ def get_next_race_prediction():
         status = "pending"
 
         if row and row.get("predicted"):
-            status = "ready"
+            status = "stale" if used_stale_fallback else "ready"
             predicted_winner = row.get("predicted")
 
             conf_val = row.get("confidence")
@@ -1950,19 +2087,39 @@ def get_next_race_prediction():
                     fp = None
 
             if isinstance(fp, dict):
+                fp_outer = fp
+                fp_data = fp
+                if isinstance(fp_outer.get("predictions"), dict):
+                    fp_data = fp_outer.get("predictions")
+
                 # Use stored metadata when available
                 try:
-                    if fp.get("round") is not None:
-                        race_round = int(fp.get("round"))
+                    round_val = fp_outer.get("round")
+                    if round_val is None and isinstance(fp_data, dict):
+                        round_val = fp_data.get("round")
+                    if round_val is not None:
+                        race_round = int(round_val)
                 except Exception:
                     pass
-                if fp.get("date"):
-                    race_date = fp.get("date")
+                date_val = fp_outer.get("date")
+                if not date_val and isinstance(fp_data, dict):
+                    date_val = fp_data.get("date")
+                if date_val:
+                    race_date = date_val
 
-                t3 = fp.get("top3_prediction") or []
+                t3 = []
+                if isinstance(fp_data, dict):
+                    t3 = fp_data.get("top3_prediction") or fp_data.get("predicted_top3") or []
                 if isinstance(t3, list):
-                    predicted_top3 = [d.get("driver") for d in t3 if isinstance(d, dict) and d.get("driver")][:3]
-                full_predictions = fp.get("full_predictions") or []
+                    if t3 and isinstance(t3[0], dict):
+                        predicted_top3 = [d.get("driver") for d in t3 if isinstance(d, dict) and d.get("driver")][:3]
+                    else:
+                        predicted_top3 = [str(x) for x in t3 if x][:3]
+
+                if isinstance(fp_data, dict):
+                    full_predictions = fp_data.get("full_predictions") or []
+                    if not isinstance(full_predictions, list):
+                        full_predictions = []
 
         # date formatting
         if isinstance(race_date, str):
@@ -2937,14 +3094,61 @@ def api_next_race():
     if not nr:
         return jsonify({"success": False, "error": "No next race found"}), 404
     
-    # Try to fetch a circuit image via Wikipedia using event name
-    event_name = nr.get("event_name") or nr.get("event")
-    circuit_img = None
-    if event_name:
-        circuit_img = fetch_wikipedia_image(event_name)
-        if circuit_img:
-            return jsonify({"success": True, "race": nr, "circuit_image_url": f"/images/{Path(circuit_img).name}"})
-    
+    # Try to fetch a circuit image via Wikipedia.
+    # Prefer local cached image (/images/...), but fall back to a remote Wikimedia URL.
+    event_name = (nr.get("event_name") or nr.get("event") or "").strip()
+    circuit_name = (nr.get("circuit") or "").strip()
+    ergast_circuit_name = None
+    if event_name and (not circuit_name or circuit_name == event_name):
+        try:
+            erg = ergast_next_race() or {}
+            erg_event = (erg.get("event") or "").strip()
+            if erg_event and erg_event.lower() == event_name.lower():
+                ergast_circuit_name = (erg.get("circuit") or "").strip() or None
+        except Exception:
+            ergast_circuit_name = None
+    race_year = nr.get("year") or nr.get("race_year")
+    try:
+        race_year = int(race_year) if race_year is not None else None
+    except Exception:
+        race_year = None
+
+    candidates: list[str] = []
+    def _add_candidate(value: str | None):
+        v = (value or "").strip()
+        if v and v not in candidates:
+            candidates.append(v)
+
+    _add_candidate(event_name)
+    if race_year and event_name and not event_name.startswith(str(race_year)):
+        _add_candidate(f"{race_year} {event_name}")
+    if circuit_name and circuit_name != event_name:
+        _add_candidate(circuit_name)
+    if ergast_circuit_name and ergast_circuit_name != event_name and ergast_circuit_name != circuit_name:
+        _add_candidate(ergast_circuit_name)
+
+    for cand in candidates:
+        # Fast path: return an already-cached local image (no network calls)
+        h = hashlib.sha1(cand.encode()).hexdigest()
+        for ext in ("jpg", "jpeg", "png", "webp", "gif", "svg"):
+            fp = IMG_CACHE / f"wiki_{h}.{ext}"
+            if fp.exists():
+                return jsonify({
+                    "success": True,
+                    "race": nr,
+                    "circuit_image_url": f"/images/{fp.name}",
+                })
+
+    for cand in candidates:
+        # Prefer a remote Wikimedia URL to keep this endpoint fast in production.
+        remote = _wikipedia_page_image_url(cand)
+        if remote:
+            return jsonify({
+                "success": True,
+                "race": nr,
+                "circuit_image_url": remote,
+            })
+
     return jsonify({"success": True, "race": nr, "circuit_image_url": None})
 
 # Serve cached images under /images/<name>
@@ -3726,7 +3930,9 @@ def model_registry():
     Shows all registered models, versions, and metrics
     """
     try:
-        registry = get_model_registry()
+        from services.mlflow_manager import get_model_registry as _get_model_registry
+
+        registry = _get_model_registry()
         return jsonify({
             "success": True,
             "data": registry
@@ -3742,7 +3948,9 @@ def model_metrics():
     Includes overall accuracy, recent accuracy, and trends
     """
     try:
-        accuracy = get_prediction_accuracy()
+        from services.mlflow_manager import get_prediction_accuracy as _get_prediction_accuracy
+
+        accuracy = _get_prediction_accuracy()
         return jsonify({
             "success": True,
             "data": accuracy,
@@ -3759,7 +3967,9 @@ def mlflow_status():
     Returns current model versions and MLflow UI URL
     """
     try:
-        registry = get_model_registry()
+        from services.mlflow_manager import get_model_registry as _get_model_registry
+
+        registry = _get_model_registry()
         return jsonify({
             "success": True,
             "status": "healthy",
@@ -3780,6 +3990,8 @@ def mlflow_status():
 if __name__ == '__main__':
     # Start background scheduler for auto-caching qualifying data
     logger.info("Starting background scheduler for automatic qualifying cache...")
+    from services.scheduler import start_scheduler, stop_scheduler
+
     start_scheduler()
     
     try:
