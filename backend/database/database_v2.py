@@ -1,9 +1,9 @@
-"""
-F1 Prediction API - Database Layer (Simplified)
+"""F1 Prediction API - Database Layer (Simplified)
 
-Supabase is used ONLY for:
+Supabase is used for:
 1. Prediction logs (accuracy tracking)
 2. Qualifying cache (avoid FastF1 rate limits)
+3. Standings cache (optional; reduces live Ergast calls)
 
 Historical race data stays in local Parquet files.
 Driver features are pre-computed snapshots.
