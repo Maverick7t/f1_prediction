@@ -148,6 +148,29 @@ CREATE INDEX IF NOT EXISTS idx_qualifying_cache_year ON qualifying_cache(race_ye
 CREATE INDEX IF NOT EXISTS idx_qualifying_cache_expires_at ON qualifying_cache(expires_at);
 
 -- =============================================================================
+-- RACE_TELEMETRY_CACHE TABLE (Cached race telemetry data)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS race_telemetry_cache (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    race_key VARCHAR(255) NOT NULL UNIQUE,
+    race_year INTEGER NOT NULL,
+    
+    -- Race telemetry data (JSON array of driver telemetry)
+    race_telemetry_data JSONB NOT NULL,
+    
+    -- TTL and metadata
+    cached_at TIMESTAMPTZ DEFAULT NOW(),
+    expires_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '365 days'),
+    
+    CONSTRAINT race_telemetry_cache_valid_expiry CHECK (expires_at > cached_at)
+);
+
+-- Indexes for fast lookups and TTL cleanup
+CREATE INDEX IF NOT EXISTS idx_race_telemetry_cache_race_key ON race_telemetry_cache(race_key);
+CREATE INDEX IF NOT EXISTS idx_race_telemetry_cache_year ON race_telemetry_cache(race_year);
+CREATE INDEX IF NOT EXISTS idx_race_telemetry_cache_expires_at ON race_telemetry_cache(expires_at);
+
+-- =============================================================================
 -- CIRCUITS TABLE (Circuit metadata)
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS circuits (
