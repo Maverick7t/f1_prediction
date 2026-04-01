@@ -429,14 +429,15 @@ export default function Dashboard() {
               <div className="driver-grid">
                 {driverData.map((driver, idx) => {
                   // Find matching driver from OpenF1
-                  const openF1Driver = openF1Drivers.find(
-                    d => d.nameAcronym === driver.name ||
-                      d.teamName === driver.team
-                  );
+                  const openF1Driver = openF1Drivers.find(d => {
+                    const openAcronym = (d?.nameAcronym || '').toUpperCase();
+                    const predictedAcronym = (driver?.name || '').toUpperCase();
+                    return openAcronym && predictedAcronym && openAcronym === predictedAcronym;
+                  });
 
                   return (
                     <DriverCard
-                      key={idx}
+                      key={`${driver?.name || 'driver'}-${driver?.team || 'team'}-${driver?.position || idx}`}
                       name={driver.name}
                       team={driver.team}
                       percentage={driver.percentage}
