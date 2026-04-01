@@ -35,7 +35,7 @@ except Exception:
 
 print("\n=== Checking tables ===")
 
-tables_to_check = ['predictions', 'qualifying_cache', 'races', 'drivers', 'teams', 'circuits', 'model_registry']
+tables_to_check = ['predictions', 'qualifying_cache', 'standings_cache', 'races', 'drivers', 'teams', 'circuits', 'model_registry']
 existing = []
 missing = []
 
