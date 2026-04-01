@@ -41,10 +41,12 @@ CREATE INDEX IF NOT EXISTS idx_qualifying_cache_expires_at ON qualifying_cache(e
 ALTER TABLE qualifying_cache ENABLE ROW LEVEL SECURITY;
 
 -- Allow public read access (for API endpoints)
+DROP POLICY IF EXISTS "Allow public read access to qualifying_cache" ON qualifying_cache;
 CREATE POLICY "Allow public read access to qualifying_cache" ON qualifying_cache
     FOR SELECT USING (true);
 
 -- Allow authenticated users (service role) to write
+DROP POLICY IF EXISTS "Allow insert/update/delete for service role" ON qualifying_cache;
 CREATE POLICY "Allow insert/update/delete for service role" ON qualifying_cache
     FOR ALL USING (true) WITH CHECK (true);
 
