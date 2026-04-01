@@ -4,6 +4,7 @@ Flow:
 - Fetch race results for a race (Ergast/Jolpica)
 - Upsert into Supabase `results_raw`
 - Update predictions table with actual winner
+- Fetch official standings (Ergast/Jolpica) and upsert into Supabase `standings_cache`
 - Optionally trigger retraining
 
 Designed to be safe to run repeatedly (idempotent upserts).
@@ -14,7 +15,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Ensure backend/ is on sys.path
@@ -25,10 +26,13 @@ os.chdir(str(BACKEND_DIR))
 from utils.config import config, ensure_directories
 from database.database_v2 import get_prediction_logger
 from database.pipeline_store import PipelineStore, RaceMeta
+from database.standings_cache import StandingsCache
 from services.ergast_client import (
     fetch_race_meta,
     fetch_results,
     fetch_season_calendar,
+    fetch_driver_standings,
+    fetch_constructor_standings,
     fetch_winner_code,
 )
 
@@ -103,6 +107,43 @@ def main() -> int:
             print(
                 f"Latest prediction row: predicted={latest.get('predicted')} actual={latest.get('actual')} correct={latest.get('correct')} conf={latest.get('confidence')}"
             )
+
+        # Store official standings snapshot (used by the standings endpoints).
+        standings = StandingsCache(
+            supabase_url=config.SUPABASE_URL,
+            supabase_key=config.SUPABASE_SERVICE_KEY,
+        )
+
+        ttl = timedelta(days=365)
+        driver_rows = fetch_driver_standings(year, round_number)
+        if driver_rows:
+            ok = standings.upsert(
+                season=year,
+                category="driver",
+                payload=driver_rows,
+                source="Ergast",
+                ttl=ttl,
+            )
+            if not ok:
+                raise RuntimeError("Failed to upsert driver standings into standings_cache")
+            print(f"Upserted standings_cache: driver rows={len(driver_rows)}")
+        else:
+            print("⚠ No driver standings returned; skipping standings_cache upsert")
+
+        constructor_rows = fetch_constructor_standings(year, round_number)
+        if constructor_rows:
+            ok = standings.upsert(
+                season=year,
+                category="constructor",
+                payload=constructor_rows,
+                source="Ergast",
+                ttl=ttl,
+            )
+            if not ok:
+                raise RuntimeError("Failed to upsert constructor standings into standings_cache")
+            print(f"Upserted standings_cache: constructor rows={len(constructor_rows)}")
+        else:
+            print("⚠ No constructor standings returned; skipping standings_cache upsert")
 
     if args.retrain and not args.dry_run:
         from scripts.retrain_model import retrain_from_supabase
