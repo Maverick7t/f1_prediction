@@ -148,6 +148,29 @@ CREATE INDEX IF NOT EXISTS idx_qualifying_cache_year ON qualifying_cache(race_ye
 CREATE INDEX IF NOT EXISTS idx_qualifying_cache_expires_at ON qualifying_cache(expires_at);
 
 -- =============================================================================
+-- STANDINGS_CACHE TABLE (Cached standings snapshots)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS standings_cache (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    season INTEGER NOT NULL,
+    category TEXT NOT NULL, -- 'driver' | 'constructor'
+
+    -- Data source and payload
+    source TEXT,
+    payload JSONB NOT NULL,
+
+    -- TTL + metadata
+    cached_at TIMESTAMPTZ DEFAULT NOW(),
+    expires_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '365 days'),
+
+    UNIQUE (season, category),
+    CONSTRAINT standings_cache_valid_expiry CHECK (expires_at > cached_at)
+);
+
+CREATE INDEX IF NOT EXISTS idx_standings_cache_season_category ON standings_cache(season, category);
+CREATE INDEX IF NOT EXISTS idx_standings_cache_expires_at ON standings_cache(expires_at);
+
+-- =============================================================================
 -- CIRCUITS TABLE (Circuit metadata)
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS circuits (
