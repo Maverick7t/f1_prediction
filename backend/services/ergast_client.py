@@ -191,3 +191,133 @@ def fetch_winner_code(year: int, round_number: int) -> Optional[str]:
         return None
     except Exception:
         return None
+
+
+def fetch_driver_standings(year: int, round_number: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Fetch official driver standings from Ergast/Jolpica.
+
+    Returns rows in a backend-friendly shape:
+    - position (int)
+    - name (str)
+    - team (str | None)
+    - points (float)
+    - wins (int)
+    - code (str)
+    """
+
+    if round_number is None:
+        payload = _get_json(f"{{BASE}}/{int(year)}/driverStandings.json")
+    else:
+        payload = _get_json(f"{{BASE}}/{int(year)}/{int(round_number)}/driverStandings.json")
+
+    lists = payload.get("MRData", {}).get("StandingsTable", {}).get("StandingsLists", [])
+    if not lists:
+        return []
+
+    standings = lists[0].get("DriverStandings", []) or []
+    out: List[Dict[str, Any]] = []
+
+    for row in standings:
+        driver = row.get("Driver", {}) or {}
+        constructors = row.get("Constructors", []) or []
+        constructor = constructors[0] if constructors else {}
+
+        try:
+            position = int(row.get("position")) if row.get("position") is not None else None
+        except Exception:
+            position = None
+
+        try:
+            points = float(row.get("points")) if row.get("points") is not None else 0.0
+        except Exception:
+            points = 0.0
+
+        try:
+            wins = int(row.get("wins")) if row.get("wins") is not None else 0
+        except Exception:
+            wins = 0
+
+        given = str(driver.get("givenName") or "").strip()
+        family = str(driver.get("familyName") or "").strip()
+        name = f"{given} {family}".strip()
+
+        code = driver.get("code") or driver.get("driverId") or ""
+        code = str(code).upper().strip()
+
+        if position is None or not code:
+            continue
+
+        out.append(
+            {
+                "position": position,
+                "name": name or code,
+                "team": constructor.get("name"),
+                "points": points,
+                "wins": wins,
+                "code": code,
+            }
+        )
+
+    out.sort(key=lambda x: int(x.get("position") or 999))
+    return out
+
+
+def fetch_constructor_standings(year: int, round_number: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Fetch official constructor standings from Ergast/Jolpica.
+
+    Returns rows in a backend-friendly shape:
+    - position (int)
+    - name (str)
+    - points (float)
+    - wins (int)
+    - id (str)
+    """
+
+    if round_number is None:
+        payload = _get_json(f"{{BASE}}/{int(year)}/constructorStandings.json")
+    else:
+        payload = _get_json(f"{{BASE}}/{int(year)}/{int(round_number)}/constructorStandings.json")
+
+    lists = payload.get("MRData", {}).get("StandingsTable", {}).get("StandingsLists", [])
+    if not lists:
+        return []
+
+    standings = lists[0].get("ConstructorStandings", []) or []
+    out: List[Dict[str, Any]] = []
+
+    for row in standings:
+        constructor = row.get("Constructor", {}) or {}
+
+        try:
+            position = int(row.get("position")) if row.get("position") is not None else None
+        except Exception:
+            position = None
+
+        try:
+            points = float(row.get("points")) if row.get("points") is not None else 0.0
+        except Exception:
+            points = 0.0
+
+        try:
+            wins = int(row.get("wins")) if row.get("wins") is not None else 0
+        except Exception:
+            wins = 0
+
+        name = str(constructor.get("name") or "").strip()
+        constructor_id = str(constructor.get("constructorId") or "").strip()
+
+        if position is None or not name:
+            continue
+
+        out.append(
+            {
+                "position": position,
+                "name": name,
+                "points": points,
+                "wins": wins,
+                "id": constructor_id,
+            }
+        )
+
+    out.sort(key=lambda x: int(x.get("position") or 999))
+    return out
