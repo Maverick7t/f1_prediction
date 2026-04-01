@@ -590,6 +590,149 @@ class QualifyingCache:
             del self._local_cache[k]
 
 
+class RaceTelemetryCache:
+    """Cache race telemetry snapshots (top 6 drivers) to avoid expensive FastF1 loads.
+
+    Uses Supabase when configured, with a local in-memory fallback.
+    """
+
+    def __init__(self, config):
+        self.config = config
+        self.supabase: Optional[Client] = None
+        self._local_cache: Dict[str, dict] = {}
+        self._mode = "local"
+
+        self._initialize()
+
+    def _initialize(self):
+        """Initialize cache backend"""
+        if self.config.USE_DATABASE and SUPABASE_AVAILABLE:
+            try:
+                supabase_key = getattr(self.config, "SUPABASE_SERVICE_KEY", None) or getattr(self.config, "SUPABASE_KEY", None)
+                if not self.config.SUPABASE_URL or not supabase_key:
+                    raise ValueError("Missing SUPABASE_URL or SUPABASE_KEY/SUPABASE_SERVICE_KEY")
+                self.supabase = create_client(
+                    self.config.SUPABASE_URL,
+                    supabase_key,
+                )
+                self._mode = "supabase"
+                logger.info("✓ Using Supabase for race telemetry cache")
+            except Exception as e:
+                logger.warning(f"Supabase connection failed: {e}")
+                self._mode = "local"
+
+    def cache_race_telemetry(
+        self,
+        race_key: str,
+        race_year: int,
+        race_telemetry_data: list,
+        ttl_hours: int = 24,
+    ):
+        """Cache race telemetry results."""
+        expires_at = datetime.now() + timedelta(hours=ttl_hours)
+
+        if self._mode == "supabase":
+            try:
+                self.supabase.table("race_telemetry_cache").upsert(
+                    {
+                        "race_key": race_key,
+                        "race_year": int(race_year),
+                        "race_telemetry_data": race_telemetry_data,
+                        "cached_at": datetime.now().isoformat(),
+                        "expires_at": expires_at.isoformat(),
+                    }
+                ).execute()
+                logger.debug(f"✓ Cached race telemetry for {race_key}")
+                return
+            except Exception as e:
+                logger.error(f"Race telemetry cache write failed: {e}")
+
+        self._local_cache[race_key] = {
+            "data": race_telemetry_data,
+            "expires_at": expires_at,
+        }
+
+    def get_cached_race_telemetry(self, race_key: str) -> Optional[list]:
+        """Get cached race telemetry results if not expired."""
+        if self._mode == "supabase":
+            try:
+                response = (
+                    self.supabase.table("race_telemetry_cache")
+                    .select("race_telemetry_data, expires_at")
+                    .eq("race_key", race_key)
+                    .gt("expires_at", datetime.now().isoformat())
+                    .execute()
+                )
+
+                if response.data:
+                    return response.data[0]["race_telemetry_data"]
+            except Exception as e:
+                logger.error(f"Race telemetry cache read failed: {e}")
+
+        cached = self._local_cache.get(race_key)
+        if cached and cached.get("expires_at") > datetime.now():
+            return cached.get("data")
+        if cached:
+            self._local_cache.pop(race_key, None)
+        return None
+
+    def get_latest_cached_race_telemetry(self) -> Optional[list]:
+        """Get the latest cached race telemetry snapshot."""
+        if self._mode == "supabase":
+            try:
+                response = (
+                    self.supabase.table("race_telemetry_cache")
+                    .select("race_telemetry_data, expires_at, race_key")
+                    .gt("expires_at", datetime.now().isoformat())
+                    .order("cached_at", desc=True)
+                    .limit(1)
+                    .execute()
+                )
+                if response.data:
+                    logger.info(f"✓ Found latest cached race telemetry: {response.data[0].get('race_key')}")
+                    return response.data[0]["race_telemetry_data"]
+
+                # If nothing is currently valid, fall back to the most recent cached
+                stale = (
+                    self.supabase.table("race_telemetry_cache")
+                    .select("race_telemetry_data, expires_at, race_key")
+                    .order("cached_at", desc=True)
+                    .limit(1)
+                    .execute()
+                )
+                if stale.data:
+                    logger.info(f"⚠ Using stale cached race telemetry: {stale.data[0].get('race_key')}")
+                    return stale.data[0]["race_telemetry_data"]
+            except Exception as e:
+                logger.error(f"Race telemetry cache read failed: {e}")
+
+        # Local fallback
+        if self._local_cache:
+            latest_key = max(self._local_cache.keys(), key=lambda k: self._local_cache[k]["expires_at"])
+            cached = self._local_cache[latest_key]
+            if cached["expires_at"] > datetime.now():
+                return cached["data"]
+        return None
+
+    def clear_expired(self):
+        """Clean up expired cache entries."""
+        if self._mode == "supabase":
+            try:
+                (
+                    self.supabase.table("race_telemetry_cache")
+                    .delete()
+                    .lt("expires_at", datetime.now().isoformat())
+                    .execute()
+                )
+            except Exception as e:
+                logger.error(f"Race telemetry cache cleanup failed: {e}")
+
+        now = datetime.now()
+        expired = [k for k, v in self._local_cache.items() if v["expires_at"] < now]
+        for k in expired:
+            del self._local_cache[k]
+
+
 # =============================================================================
 # SIMPLIFIED SCHEMA (What Supabase actually needs)
 # =============================================================================
@@ -638,6 +781,7 @@ CREATE POLICY "Allow update on qualifying_cache" ON qualifying_cache FOR UPDATE 
 # =============================================================================
 _prediction_logger: Optional[PredictionLogger] = None
 _qualifying_cache: Optional[QualifyingCache] = None
+_race_telemetry_cache: Optional[RaceTelemetryCache] = None
 
 def get_prediction_logger(config=None) -> PredictionLogger:
     """Get or create prediction logger singleton"""
@@ -658,3 +802,15 @@ def get_qualifying_cache(config=None) -> QualifyingCache:
             config = app_config
         _qualifying_cache = QualifyingCache(config)
     return _qualifying_cache
+
+
+def get_race_telemetry_cache(config=None) -> RaceTelemetryCache:
+    """Get or create race telemetry cache singleton."""
+    global _race_telemetry_cache
+    if _race_telemetry_cache is None:
+        if config is None:
+            from utils.config import config as app_config
+
+            config = app_config
+        _race_telemetry_cache = RaceTelemetryCache(config)
+    return _race_telemetry_cache
