@@ -31,8 +31,13 @@ from utils.config import config, ensure_directories, print_config
 # Import new feature store for efficient feature retrieval
 from services.feature_store import get_feature_store, FeatureStore
 
-# Import Supabase prediction logger for accuracy tracking
-from database.database_v2 import get_prediction_logger, PredictionLogger, get_qualifying_cache
+# Import Supabase prediction logger + telemetry caches
+from database.database_v2 import (
+    get_prediction_logger,
+    PredictionLogger,
+    get_qualifying_cache,
+    get_race_telemetry_cache,
+)
 
 # Optional Supabase-backed cache for standings snapshots
 from database.standings_cache import try_create_cache
@@ -468,12 +473,20 @@ def _wikipedia_page_image_url(entity_name: str, *, fallback_size: int = 600):
     Prefers `original` image when available, otherwise uses `thumbnail`.
     """
 
+    headers = {
+        # Wikimedia APIs may return 403 for generic/missing user agents.
+        "User-Agent": os.getenv("WIKIMEDIA_USER_AGENT")
+        or "f1-hackathon/1.0 (https://github.com; dev)",
+        "Accept": "application/json",
+    }
+
     def _query_title(title: str):
         if not title:
             return None
 
         r = requests.get(
             "https://en.wikipedia.org/w/api.php",
+            headers=headers,
             params={
                 "action": "query",
                 "format": "json",
@@ -509,6 +522,7 @@ def _wikipedia_page_image_url(entity_name: str, *, fallback_size: int = 600):
     try:
         s = requests.get(
             "https://en.wikipedia.org/w/api.php",
+            headers=headers,
             params={
                 "action": "query",
                 "format": "json",
@@ -568,7 +582,15 @@ def fetch_wikipedia_image(entity_name: str, fallback_size=600):
     p = IMG_CACHE / f"wiki_{h}.{ext}"
 
     try:
-        r = requests.get(img_url, timeout=12, stream=True)
+        r = requests.get(
+            img_url,
+            timeout=12,
+            stream=True,
+            headers={
+                "User-Agent": os.getenv("WIKIMEDIA_USER_AGENT")
+                or "f1-hackathon/1.0 (https://github.com; dev)",
+            },
+        )
         r.raise_for_status()
         with open(p, "wb") as fh:
             for chunk in r.iter_content(1024 * 8):
@@ -3469,6 +3491,89 @@ def get_cached_qualifying_session():
         return None
 
 
+# Cache for race session to avoid reloading (development use)
+_cached_race_session = None
+_cached_race_timestamp = None
+_race_session_lock = __import__('threading').Lock()
+
+
+def get_cached_race_session():
+    """Load and cache the latest completed race session with telemetry."""
+    global _cached_race_session, _cached_race_timestamp
+    import time
+    from datetime import datetime
+
+    current_time = time.time()
+    # Refresh cache every 30 minutes
+    with _race_session_lock:
+        if _cached_race_session is not None and (current_time - _cached_race_timestamp) < 1800:
+            logger.debug("Returning cached race session")
+            return _cached_race_session
+
+    try:
+        logger.info("Loading latest race session from FastF1...")
+
+        years_to_try = [2026, 2025, 2024]
+
+        for year in years_to_try:
+            try:
+                logger.info(f"Attempting to load race sessions for year {year}...")
+                schedule = fastf1.get_event_schedule(year)
+                schedule['EventDate'] = pd.to_datetime(schedule['EventDate'])
+                today = pd.to_datetime(datetime.now().date())
+
+                past_events = schedule[schedule['EventDate'] <= today]
+                past_events = past_events.sort_values('EventDate', ascending=False)
+
+                if len(past_events) == 0:
+                    logger.debug(f"No completed events found for {year}")
+                    continue
+
+                logger.info(f"Found {len(past_events)} completed events for {year}")
+
+                for _, event in past_events.iterrows():
+                    event_name = event.get('EventName') or event.get('Event')
+                    round_num = event.get('RoundNumber')
+                    event_date = event.get('EventDate')
+
+                    try:
+                        logger.info(f"Attempting to load {event_name} (Round {round_num}) {year} race... ({event_date})")
+
+                        session = fastf1.get_session(year, round_num, 'R')
+                        session.load(laps=True, telemetry=True, weather=False)
+
+                        if session.results is not None and len(session.results) > 0:
+                            # Verify we can get telemetry from at least one driver
+                            test_driver = session.results.iloc[0]['Abbreviation']
+                            test_laps = session.laps.pick_drivers([test_driver])
+                            if not test_laps.empty:
+                                test_fast = test_laps.pick_fastest()
+                                test_tel = test_fast.get_telemetry() if test_fast is not None else None
+                                if test_tel is not None and not getattr(test_tel, 'empty', True):
+                                    logger.info(
+                                        f"✓ Successfully loaded {event_name} {year} race session with telemetry"
+                                    )
+                                    with _race_session_lock:
+                                        _cached_race_session = session
+                                        _cached_race_timestamp = current_time
+                                    return session
+
+                    except Exception as e:
+                        logger.debug(f"Could not load {event_name}: {str(e)[:100]}")
+                        continue
+
+            except Exception as e:
+                logger.debug(f"Error loading {year} schedule: {str(e)[:100]}")
+                continue
+
+        logger.error("Could not load any race session from FastF1")
+        return None
+
+    except Exception as e:
+        logger.error(f"Error loading race session: {str(e)[:200]}")
+        return None
+
+
 @app.route('/api/latest-qualifying-session', methods=['GET'])
 def latest_qualifying_session_data():
     """Returns top 6 drivers from latest qualifying session with metadata"""
@@ -3879,6 +3984,161 @@ def qualifying_circuit_telemetry():
             logger.error(f"Could not retrieve stale cache: {cache_err}")
         
         return _internal_error("Qualifying circuit telemetry endpoint failed", e)
+
+
+@app.route('/api/race-circuit-telemetry')
+def race_circuit_telemetry():
+    """Returns telemetry data for top 6 race finishers (cache-first).
+
+    Query params: year, event (optional, defaults to latest)
+
+    CACHING STRATEGY:
+    - Latest session: Prefer Supabase cache when available
+    - Production: Cache-only (prevents worker timeout)
+    - Development: Cache if present, else loads fresh via FastF1
+    """
+    try:
+        year = request.args.get('year', type=int)
+        event = request.args.get('event', type=str)
+
+        logger.info(f"Loading race telemetry for {year} {event}")
+
+        # Cache-first for latest-session queries; production is cache-only.
+        try:
+            logger.info("✓ Checking Supabase for cached race telemetry")
+            race_cache = get_race_telemetry_cache(config)
+            cached_result = race_cache.get_latest_cached_race_telemetry()
+
+            if cached_result is not None and ((not year and not event) or config.FLASK_ENV == "production"):
+                logger.info("✓ Returning cached race telemetry from Supabase")
+                return jsonify({
+                    "success": True,
+                    "drivers": cached_result if isinstance(cached_result, list) else [],
+                    "source": "supabase_cache"
+                }), 200
+        except Exception as e:
+            logger.debug(f"Supabase race telemetry cache check failed: {e}")
+
+        # Cache miss on production: return helpful message instead of timeout
+        if config.FLASK_ENV == "production":
+            logger.warning("⚠️  No cached race telemetry found in production")
+            return jsonify({
+                "success": False,
+                "error": "Race telemetry not yet cached",
+                "message": "Race telemetry cache is populated after each race using: python scripts/cache_race_telemetry.py",
+                "source": "cache_miss"
+            }), 404
+
+        # Development: allow fresh loads (no timeout risk locally)
+        if year and event:
+            logger.info(f"Development mode: loading fresh race data for {year} {event}")
+            session = fastf1.get_session(year, event, 'R')
+        else:
+            session = get_cached_race_session()
+
+        if session is None:
+            return jsonify({
+                "success": False,
+                "error": "Could not load race session"
+            }), 404
+
+        session.load(laps=True, telemetry=True, weather=False)
+
+        results = session.results.sort_values('Position')
+        top_6_drivers = results.head(6)['Abbreviation'].tolist()
+
+        drivers_data = []
+
+        for idx, driver_code in enumerate(top_6_drivers):
+            try:
+                driver_row = session.results[session.results['Abbreviation'] == driver_code].iloc[0]
+
+                driver_laps = session.laps.pick_drivers([driver_code])
+                if driver_laps.empty:
+                    continue
+
+                fastest_lap = driver_laps.pick_fastest()
+                telemetry = fastest_lap.get_telemetry()
+
+                if telemetry.empty:
+                    continue
+
+                lap_time = fastest_lap['LapTime'].total_seconds() if pd.notna(fastest_lap['LapTime']) else 0
+
+                s1 = fastest_lap.get('Sector1Time', np.nan)
+                s2 = fastest_lap.get('Sector2Time', np.nan)
+                s3 = fastest_lap.get('Sector3Time', np.nan)
+
+                sector1_s = s1.total_seconds() if pd.notna(s1) else 0
+                sector2_s = s2.total_seconds() if pd.notna(s2) else 0
+                sector3_s = s3.total_seconds() if pd.notna(s3) else 0
+
+                max_accel = telemetry['Acceleration'].max() if 'Acceleration' in telemetry.columns else 0
+                avg_accel = telemetry['Acceleration'].mean() if 'Acceleration' in telemetry.columns else 0
+
+                brake_events = 0
+                if 'Brake' in telemetry.columns:
+                    brake_events = (telemetry['Brake'] > 0).sum()
+
+                circuit_trace = {
+                    "x": telemetry['X'].astype(float).tolist(),
+                    "y": telemetry['Y'].astype(float).tolist(),
+                    "speed": telemetry['Speed'].astype(float).tolist()
+                }
+
+                driver_data = {
+                    "code": str(driver_code),
+                    "name": str(driver_row['FullName']),
+                    "team": str(driver_row['TeamName']),
+                    "race_position": int(driver_row['Position']) if pd.notna(driver_row['Position']) else None,
+                    "telemetry_stats": {
+                        "lap_time_s": float(round(lap_time, 3)),
+                        "top_speed_kmh": float(round(telemetry['Speed'].max(), 1)),
+                        "avg_speed_kmh": float(round(telemetry['Speed'].mean(), 1)),
+                        "min_speed_kmh": float(round(telemetry['Speed'].min(), 1)),
+                        "max_acceleration_g": float(round(max_accel, 2)),
+                        "avg_acceleration_g": float(round(avg_accel, 2)),
+                        "sector1_s": float(round(sector1_s, 3)),
+                        "sector2_s": float(round(sector2_s, 3)),
+                        "sector3_s": float(round(sector3_s, 3)),
+                        "total_data_points": int(len(telemetry)),
+                        "brake_zones": int(brake_events),
+                    },
+                    "circuit_trace": circuit_trace,
+                    "available_channels": [str(c) for c in telemetry.columns.tolist()]
+                }
+
+                drivers_data.append(driver_data)
+                logger.info(f"  ✓ {driver_code}: {len(telemetry)} telemetry points")
+
+            except Exception as e:
+                logger.error(f"  ❌ Error processing {driver_code}: {str(e)[:100]}")
+                continue
+
+        if not drivers_data:
+            return jsonify({
+                "success": False,
+                "error": "No telemetry data could be extracted for top 6 drivers"
+            }), 404
+
+        session_info = {
+            "year": int(session.event.get('Year', session.event.get('year', datetime.now().year))),
+            "event": session.event.get('EventName', 'Unknown'),
+            "circuit": session.event.get('CircuitName', 'Unknown'),
+            "round": int(session.event.get('RoundNumber', 0))
+        }
+
+        return jsonify({
+            "success": True,
+            "session_info": session_info,
+            "drivers": drivers_data,
+            "source": "fastf1_fresh"
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error in race_circuit_telemetry: {str(e)[:200]}")
+        logger.error(traceback.format_exc())
+        return _internal_error("Race circuit telemetry endpoint failed", e)
 
 
 @app.route('/api/driver-circuit-details/<driver_code>', methods=['GET'])
