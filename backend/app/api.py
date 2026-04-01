@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 import hashlib
 import fastf1
-from datetime import datetime
+from datetime import datetime, timedelta
 import uuid
 import json
 import traceback
@@ -33,6 +33,9 @@ from services.feature_store import get_feature_store, FeatureStore
 
 # Import Supabase prediction logger for accuracy tracking
 from database.database_v2 import get_prediction_logger, PredictionLogger, get_qualifying_cache
+
+# Optional Supabase-backed cache for standings snapshots
+from database.standings_cache import try_create_cache
 
 # Import file-based caching for expensive queries
 from utils.file_cache import get_file_cache, CACHE_KEYS, CACHE_TTL
@@ -417,6 +420,14 @@ def ensure_inference_assets_loaded():
 # Initialize Supabase prediction logger (used by most endpoints)
 prediction_logger = get_prediction_logger(config)
 logger.info(f"✓ Prediction logger initialized (mode: {prediction_logger.mode})")
+
+# Initialize standings cache (optional)
+standings_cache = try_create_cache(config)
+STANDINGS_CACHE_TTL = timedelta(days=365)
+if standings_cache is not None:
+    logger.info("✓ Standings cache enabled (Supabase)")
+else:
+    logger.info("Standings cache disabled (no Supabase configured)")
 
 # Historical training dataset loading removed for production simplicity.
 # We rely on qualifying + FeatureStore snapshots + Supabase pipeline tables.
@@ -3180,39 +3191,69 @@ def api_driver_standings():
     """
     try:
         logger.info("Fetching driver standings endpoint...")
+
+        season_year = datetime.now().year
+        cache_source = None
+        response_source = None
+        actual_standings = None
+
+        # Prefer Supabase cache when available (keeps requests fast + reduces Ergast load)
+        if standings_cache is not None:
+            cached = standings_cache.get_fresh(season=season_year, category="driver")
+            if cached and isinstance(cached.payload, list) and len(cached.payload) > 0:
+                actual_standings = cached.payload
+                cache_source = cached.source
+                response_source = f"Supabase cache ({cache_source or 'unknown'})"
+                logger.info("✓ Using cached driver standings from Supabase (%s)", cache_source or "unknown")
         
-        # Get actual standings from FastF1
-        actual_standings = get_2025_driver_standings_from_fastf1()
-        
+        # If cache miss, fetch live and refresh the cache.
+        if not actual_standings:
+            actual_standings = get_2025_driver_standings_from_fastf1()
+            if actual_standings and standings_cache is not None:
+                standings_cache.upsert(
+                    season=season_year,
+                    category="driver",
+                    payload=actual_standings,
+                    source="FastF1",
+                    ttl=STANDINGS_CACHE_TTL,
+                )
+            if actual_standings:
+                response_source = "FastF1"
+
+        # Final fallback: direct Ergast calls (no pandas/fastf1 dependency)
         if not actual_standings:
             logger.warning("No standings data from FastF1, using Ergast fallback")
-            ergast_data = ergast_standings("2025")
+            ergast_data = ergast_standings(str(season_year))
             drivers = ergast_data.get("drivers", [])
-            
-            # Convert to expected format
-            result_data = []
-            for driver in drivers:
-                result_data.append({
-                    "position": driver.get("position"),
-                    "driverName": driver.get("driver_name"),
-                    "teamName": driver.get("constructor"),
-                    "points": int(driver.get("points", 0)),
-                    "predictedPoints": int(driver.get("points", 0)) + predict_driver_points_for_future_races(driver.get("driver_code"), driver.get("points", 0), 5),
-                    "headshotUrl": None,
-                    "teamColor": "#1e3a8a"  # Default color
-                })
-            
-            return jsonify({
-                "success": True,
-                "source": "Ergast (fallback)",
-                "data": result_data
-            })
+
+            actual_standings = []
+            for d in drivers:
+                actual_standings.append(
+                    {
+                        "position": d.get("position"),
+                        "name": d.get("driver_name"),
+                        "team": d.get("constructor"),
+                        "points": int(d.get("points", 0)),
+                        "code": d.get("driver_code"),
+                    }
+                )
+
+            if actual_standings and standings_cache is not None:
+                standings_cache.upsert(
+                    season=season_year,
+                    category="driver",
+                    payload=actual_standings,
+                    source="Ergast",
+                    ttl=STANDINGS_CACHE_TTL,
+                )
+            response_source = "Ergast (fallback)"
         
         # Calculate predicted points for each driver (next 5 races)
         result_data = []
         for driver in actual_standings:
+            driver_code = driver.get("code") or driver.get("driver_code")
             predicted_additional = predict_driver_points_for_future_races(
-                driver.get("code"),
+                driver_code,
                 driver.get("points", 0),
                 num_races=5
             )
@@ -3220,8 +3261,8 @@ def api_driver_standings():
             
             result_data.append({
                 "position": driver.get("position"),
-                "driverName": driver.get("name"),
-                "teamName": driver.get("team"),
+                "driverName": driver.get("name") or driver.get("driver_name"),
+                "teamName": driver.get("team") or driver.get("constructor"),
                 "points": int(driver.get("points", 0)),
                 "predictedPoints": int(predicted_total),
                 "headshotUrl": None,
@@ -3231,7 +3272,7 @@ def api_driver_standings():
         logger.info(f"✓ Driver standings complete: {len(result_data)} drivers")
         return jsonify({
             "success": True,
-            "source": "FastF1",
+            "source": response_source or "FastF1",
             "data": result_data
         })
         
@@ -3246,9 +3287,33 @@ def api_constructor_standings():
     """
     try:
         logger.info("Fetching constructor standings endpoint...")
+
+        season_year = datetime.now().year
+        cache_source = None
+        response_source = None
+        actual_standings = None
+
+        if standings_cache is not None:
+            cached = standings_cache.get_fresh(season=season_year, category="constructor")
+            if cached and isinstance(cached.payload, list) and len(cached.payload) > 0:
+                actual_standings = cached.payload
+                cache_source = cached.source
+                response_source = f"Supabase cache ({cache_source or 'unknown'})"
+                logger.info("✓ Using cached constructor standings from Supabase (%s)", cache_source or "unknown")
         
-        # Get actual standings from Ergast
-        actual_standings = get_2025_constructor_standings_from_ergast()
+        # Cache miss: fetch live and refresh the cache.
+        if not actual_standings:
+            actual_standings = get_2025_constructor_standings_from_ergast()
+            if actual_standings and standings_cache is not None:
+                standings_cache.upsert(
+                    season=season_year,
+                    category="constructor",
+                    payload=actual_standings,
+                    source="Ergast",
+                    ttl=STANDINGS_CACHE_TTL,
+                )
+            if actual_standings:
+                response_source = "Ergast"
         
         if not actual_standings:
             logger.warning("No constructor standings data from Ergast")
@@ -3280,7 +3345,7 @@ def api_constructor_standings():
         logger.info(f"✓ Constructor standings complete: {len(result_data)} constructors")
         return jsonify({
             "success": True,
-            "source": "Ergast",
+            "source": response_source or "Ergast",
             "data": result_data
         })
         
