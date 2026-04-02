@@ -1,0 +1,19 @@
+name: Keep backend alive
+
+on:
+  schedule:
+    - cron: '*/10 * * * *' # every 10 minutes
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit health endpoint
+        env:
+          KEEPALIVE_URL: ${{ secrets.KEEPALIVE_URL }}
+        run: |
+          URL="${KEEPALIVE_URL:-https://your-app-url.example.com/api/health}"
+          echo "Pinging $URL"
+          # Use curl; do not fail the workflow if the endpoint is temporarily down
+          curl -fsS "$URL" || echo "keepalive ping failed"
