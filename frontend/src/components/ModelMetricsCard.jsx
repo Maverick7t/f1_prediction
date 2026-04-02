@@ -157,8 +157,8 @@ const ModelMetricsCard = () => {
                     </div>
                     <div className={styles.modelMetrics}>
                       <span>Accuracy: {(model.metrics.accuracy * 100).toFixed(1)}%</span>
-                      <span>F1: {(model.metrics.f1_score || 0).toFixed(3)}</span>
-                      <span>Precision: {(model.metrics.precision || 0).toFixed(3)}</span>
+                      <span>F1: {(model.metrics.f1_score * 100).toFixed(1)}%</span>
+                      <span>Precision: {(model.metrics.precision * 100).toFixed(1)}%</span>
                     </div>
                     <div className={styles.modelTime}>
                       {new Date(model.timestamp).toLocaleDateString()}
