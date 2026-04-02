@@ -152,9 +152,7 @@ export default function DriverCard({
                     color: '#cbd5e1'
                 }}>
                     {points && <div>Points: <span style={{ color: '#00d4ff', fontWeight: '700' }}>{points}</span></div>}
-                    <div style={{ marginTop: '4px' }}>
-                        Click for detailed analysis →
-                    </div>
+                    {/* detailed analysis link removed as requested */}
                 </div>
             )}
         </div>

@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS qualifying_cache (
 qualifying_data JSONB NOT NULL,
 
 -- TTL and metadata
+
 cached_at TIMESTAMPTZ DEFAULT NOW(),
     expires_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '365 days'),
     
@@ -69,6 +70,7 @@ CREATE TABLE IF NOT EXISTS race_telemetry_cache (
 race_telemetry_data JSONB NOT NULL,
 
 -- TTL and metadata
+
 cached_at TIMESTAMPTZ DEFAULT NOW(),
     expires_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '365 days'),
     
@@ -77,7 +79,9 @@ cached_at TIMESTAMPTZ DEFAULT NOW(),
 
 -- Create indexes for fast lookups
 CREATE INDEX IF NOT EXISTS idx_race_telemetry_cache_race_key ON race_telemetry_cache (race_key);
+
 CREATE INDEX IF NOT EXISTS idx_race_telemetry_cache_year ON race_telemetry_cache (race_year);
+
 CREATE INDEX IF NOT EXISTS idx_race_telemetry_cache_expires_at ON race_telemetry_cache (expires_at);
 
 -- Enable Row Level Security
@@ -85,11 +89,13 @@ ALTER TABLE race_telemetry_cache ENABLE ROW LEVEL SECURITY;
 
 -- Allow public read access (for API endpoints)
 DROP POLICY IF EXISTS "Allow public read access to race_telemetry_cache" ON race_telemetry_cache;
+
 CREATE POLICY "Allow public read access to race_telemetry_cache" ON race_telemetry_cache FOR
 SELECT USING (true);
 
 -- Allow authenticated users (service role) to write
 DROP POLICY IF EXISTS "Allow insert/update/delete for service role" ON race_telemetry_cache;
+
 CREATE POLICY "Allow insert/update/delete for service role" ON race_telemetry_cache FOR ALL USING (true)
 WITH
     CHECK (true);

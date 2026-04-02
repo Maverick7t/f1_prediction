@@ -21,8 +21,7 @@ CREATE TABLE IF NOT EXISTS races (
 driver VARCHAR(10) NOT NULL, team VARCHAR(100),
 
 -- Qualifying
-qualifying_position INTEGER,
-qualifying_lap_time_s DECIMAL(10, 3),
+qualifying_position INTEGER, qualifying_lap_time_s DECIMAL(10, 3),
 
 -- Race result
 finishing_position INTEGER, points DECIMAL(5, 2),
@@ -100,9 +99,7 @@ CREATE TABLE IF NOT EXISTS predictions (
     timestamp TIMESTAMPTZ DEFAULT NOW(),
 
 -- Race info
-race VARCHAR(255) NOT NULL,
-race_year INTEGER,
-circuit VARCHAR(255),
+race VARCHAR(255) NOT NULL, race_year INTEGER, circuit VARCHAR(255),
 
 -- Prediction
 predicted VARCHAR(10) NOT NULL,
@@ -135,6 +132,7 @@ CREATE TABLE IF NOT EXISTS qualifying_cache (
 qualifying_data JSONB NOT NULL,
 
 -- TTL and metadata
+
 cached_at TIMESTAMPTZ DEFAULT NOW(),
     expires_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '365 days'),
     
@@ -160,6 +158,7 @@ CREATE TABLE IF NOT EXISTS race_telemetry_cache (
 race_telemetry_data JSONB NOT NULL,
 
 -- TTL and metadata
+
 cached_at TIMESTAMPTZ DEFAULT NOW(),
     expires_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '365 days'),
     
@@ -185,6 +184,7 @@ CREATE TABLE IF NOT EXISTS standings_cache (
 source TEXT, payload JSONB NOT NULL,
 
 -- TTL + metadata
+
 cached_at TIMESTAMPTZ DEFAULT NOW(),
     expires_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '365 days'),
 
@@ -240,6 +240,7 @@ features JSONB,
 status VARCHAR(20) DEFAULT 'active', -- 'active', 'deprecated', 'testing'
 
 -- Metadata
+
 registered_at TIMESTAMPTZ DEFAULT NOW(),
     
     UNIQUE(model_name, version)
