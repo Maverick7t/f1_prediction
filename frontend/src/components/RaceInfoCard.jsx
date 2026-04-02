@@ -166,31 +166,6 @@ export default function RaceInfoCard({
                     <span>{time}</span>
                 </div>
             </div>
-
-            <button style={{
-                width: '100%',
-                marginTop: '12px',
-                backgroundColor: '#00d4ff',
-                color: '#000',
-                border: 'none',
-                padding: '10px',
-                borderRadius: '6px',
-                fontSize: '13px',
-                fontWeight: '700',
-                cursor: 'pointer',
-                transition: 'all 0.3s ease'
-            }}
-                onMouseEnter={(e) => {
-                    e.target.style.backgroundColor = '#00e5ff'
-                    e.target.style.transform = 'translateY(-2px)'
-                }}
-                onMouseLeave={(e) => {
-                    e.target.style.backgroundColor = '#00d4ff'
-                    e.target.style.transform = 'translateY(0)'
-                }}
-            >
-                VIEW FULL PREDICTIONS
-            </button>
         </div>
     )
 }
