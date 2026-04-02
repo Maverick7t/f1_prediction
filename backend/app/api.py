@@ -1478,6 +1478,28 @@ def health_check():
     })
 
 
+@app.route('/api/warmup', methods=['GET'])
+def warmup():
+    """
+    Warm-up endpoint to pre-load inference assets.
+    Called by GitHub Actions keepalive to prevent cold starts.
+    """
+    try:
+        ensure_inference_assets_loaded()
+        return jsonify({
+            "status": "warm",
+            "message": "Inference assets preloaded",
+            "assets_loaded": _inference_assets_loaded,
+            "loaded_at": _inference_assets_loaded_at
+        }), 200
+    except InferenceAssetsUnavailableError as e:
+        logger.warning(f"Warmup failed: {e}")
+        return jsonify({
+            "status": "warm_error",
+            "message": str(e)
+        }), 503
+
+
 @app.route('/api/prediction-accuracy', methods=['GET'])
 def prediction_accuracy():
     """

@@ -2,18 +2,38 @@ name: Keep backend alive
 
 on:
   schedule:
-    - cron: '*/10 * * * *' # every 10 minutes
+    - cron: '*/8 * * * *'  # every 8 minutes (more aggressive than 10 to ensure coverage)
   workflow_dispatch:
 
 jobs:
-  ping:
+  keepalive:
     runs-on: ubuntu-latest
     steps:
-      - name: Hit health endpoint
+      - name: Ping health endpoint
         env:
-          KEEPALIVE_URL: ${{ secrets.KEEPALIVE_URL }}
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
         run: |
-          URL="${KEEPALIVE_URL:-https://your-app-url.example.com/api/health}"
-          echo "Pinging $URL"
-          # Use curl; do not fail the workflow if the endpoint is temporarily down
-          curl -fsS "$URL" || echo "keepalive ping failed"
+          URL="${BACKEND_URL}"
+          if [ -z "$URL" ]; then
+            echo "❌ BACKEND_URL secret not configured!"
+            echo "   Go to: Settings → Secrets and variables → Actions"
+            echo "   Create secret BACKEND_URL = https://your-app.onrender.com"
+            exit 1
+          fi
+          
+          HEALTH_URL="${URL}/api/health"
+          echo "▶ Pinging $HEALTH_URL"
+          
+          # Ping health endpoint
+          if curl -fsS "$HEALTH_URL" > /dev/null 2>&1; then
+            echo "✓ Health check OK"
+          else
+            echo "⚠ Health check failed (non-blocking)"
+          fi
+          
+          # Also warm up prediction endpoint to pre-load models
+          WARMUP_URL="${URL}/api/warmup"
+          echo "▶ Warming up inference models at $WARMUP_URL"
+          curl -fsS "$WARMUP_URL" > /dev/null 2>&1 || echo "⚠ Warmup failed (non-blocking)"
+          
+          echo "✓ Keepalive ping cycle complete"

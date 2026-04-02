@@ -1,1 +1,1 @@
-web: gunicorn --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 600 --preload app.wsgi:app
+web: cd app && gunicorn -c gunicorn_config.py --preload wsgi:app
