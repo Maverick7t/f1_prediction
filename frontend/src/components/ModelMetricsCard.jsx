@@ -23,10 +23,10 @@ const ModelMetricsCard = () => {
         fetch(`${API_BASE_URL}/api/model-metrics`),
         fetch(`${API_BASE_URL}/api/model-registry`)
       ])
-      
+
       const metricsData = await metricsRes.json()
       const registryData = await registryRes.json()
-      
+
       if (metricsData.success) setMetrics(metricsData.data)
       if (registryData.success) setRegistry(registryData.data)
       setError(null)
@@ -59,7 +59,7 @@ const ModelMetricsCard = () => {
   return (
     <div className={styles.card}>
       <div className={styles.header}>
-        <h3>🤖 MLOps Model Monitor</h3>
+        <h3>Model Performance</h3>
         <div className={styles.badge}>MLflow v2.10</div>
       </div>
 
@@ -169,15 +169,6 @@ const ModelMetricsCard = () => {
                 <div className={styles.noModels}>No models registered yet</div>
               )}
             </div>
-
-            <div className={styles.mlflowInfo}>
-              <div className={styles.label}>MLflow Info</div>
-              <div className={styles.infoBox}>
-                <div><strong>Total Runs:</strong> {registry.mlflow_runs}</div>
-                <div><strong>UI:</strong> <code>mlflow ui --backend-store-uri file:./mlruns</code></div>
-                <div className={styles.hint}>Run this command in your backend directory to view MLflow UI</div>
-              </div>
-            </div>
           </div>
         </div>
       )}
@@ -187,9 +178,6 @@ const ModelMetricsCard = () => {
         <span className={styles.lastUpdate}>
           Last updated: {new Date().toLocaleTimeString()}
         </span>
-        <button className={styles.refreshBtn} onClick={fetchMetrics}>
-          🔄 Refresh
-        </button>
       </div>
     </div>
   )
