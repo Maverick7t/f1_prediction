@@ -2,7 +2,7 @@ name: Keep backend alive
 
 on:
   schedule:
-    - cron: '*/8 * * * *'  # every 8 minutes (more aggressive than 10 to ensure coverage)
+    - cron: '0 * * * *'  # every hour (more reliable than 8 min, GitHub cron has delays)
   workflow_dispatch:
 
 jobs:
