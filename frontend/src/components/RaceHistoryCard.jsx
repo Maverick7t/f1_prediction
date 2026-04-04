@@ -25,20 +25,20 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
         setLoading(false)
     }, [raceHistory, sortBy])
 
-    const calculateModelAccuracy = () => {
-        if (races.length === 0) return 0
-        const correctCount = races.filter(r => r.correct).length
-        return Math.round((correctCount / races.length) * 100)
-    }
-
     const getResultColor = (correct) => {
-        return correct ? '#22c55e' : '#ef4444'
+        return correct ? COLORS.success : COLORS.error
     }
 
     const getConfidenceColor = (confidence) => {
-        if (confidence >= 70) return '#22c55e'
-        if (confidence >= 50) return '#eab308'
-        return '#ef4444'
+        if (confidence >= CONFIDENCE_LEVEL.HIGH) {
+            return COLORS.success
+        }
+
+        if (confidence >= CONFIDENCE_LEVEL.MEDIUM) {
+            return COLORS.warning
+        }
+
+        return COLORS.error
     }
 
     return (
