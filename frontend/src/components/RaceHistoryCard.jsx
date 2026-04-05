@@ -53,7 +53,7 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
             {/* Header */}
             <div style={{
                 display: 'flex',
-                justifyContent: 'space-between',
+                justifyContent: 'flex-start',
                 alignItems: 'center',
                 marginBottom: '16px'
             }}>
@@ -65,16 +65,6 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
                     textTransform: 'uppercase'
                 }}>
                     RACE HISTORY (LAST 5)
-                </div>
-                <div style={{
-                    fontSize: '14px',
-                    fontWeight: '700',
-                    color: '#00d4ff',
-                    backgroundColor: 'rgba(0, 212, 255, 0.1)',
-                    padding: '4px 12px',
-                    borderRadius: '4px'
-                }}>
-                    Accuracy: {calculateModelAccuracy()}%
                 </div>
             </div>
 
