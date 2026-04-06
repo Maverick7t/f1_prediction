@@ -52,7 +52,7 @@ app = Flask(__name__)
 CORS(app, resources={
     r"/api/*": {
         "origins": [
-            "https://fonewinner.vercel.app",
+            "https://raceforcast.vercel.app",
             "http://localhost:5173",
             "http://localhost:3000"
         ],
