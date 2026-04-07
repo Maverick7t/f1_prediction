@@ -224,7 +224,7 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
                                         color: '#888888',
                                         fontSize: '12px'
                                     }}>
-                                        {race.date ? new Date(race.date).toLocaleDateString() : 'N/A'}
+                                        {formatRaceDate(race.date)}
                                     </td>
                                     <td style={{
                                         padding: '10px 8px',
