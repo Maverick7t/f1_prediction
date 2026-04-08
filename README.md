@@ -50,8 +50,8 @@ npm run dev
 
 ## Deployment
 
-- Render: see `render.yaml` and `RENDER_DEPLOYMENT.md`
-- Vercel: deploy `frontend/` and set `VITE_API_URL` to your backend URL
+- Render (backend): see `render.yaml` and `RENDER_DEPLOYMENT.md`
+- Vercel (frontend): deploy `frontend/` and set `VITE_API_URL` to your backend URL
 
 ## License
 
