@@ -22,7 +22,7 @@ Frontend: http://localhost:5173 (Vite)
 cd backend
 python -m venv f1env
 .\f1env\Scripts\Activate.ps1
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 python app/run_dev.py
 ```
 
