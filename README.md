@@ -37,7 +37,7 @@ npm run dev
 ## Config (minimal)
 
 - Frontend: `VITE_API_URL` (defaults to `http://localhost:5000`)
-- Backend: see `backend/config/development.env` for typical local defaults
+- Backend: typical local defaults in `backend/config/development.env`
 
 ## API
 
