@@ -11,8 +11,8 @@ Prereqs: Python 3.x + Node.js 18+.
 .\start.ps1
 ```
 
-Backend: http://localhost:5000
-Frontend: http://localhost:5173 (Vite)
+Backend: `http://localhost:5000`
+Frontend: `http://localhost:5173` (Vite)
 
 ## Manual run (dev)
 
