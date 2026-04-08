@@ -30,7 +30,7 @@ python app/run_dev.py
 
 ```powershell
 cd frontend
-npm install
+npm install # first time only
 npm run dev
 ```
 
