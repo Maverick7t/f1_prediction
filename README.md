@@ -44,7 +44,7 @@ npm run dev
 - `GET /api/health` — health check
 - `GET /api/next-race` — next race info
 - `GET /api/qualifying` — qualifying data
-- `POST /api/predict` — run a prediction
+- `POST /api/predict` — run a race prediction
 - `GET /api/prediction-history` — recent predictions
 - `POST /api/update-actual-winner` — backfill actual winner + correctness
 
