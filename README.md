@@ -2,6 +2,8 @@
 
 Full-stack F1 race prediction app with a Flask API + XGBoost models and a React (Vite) frontend.
 
+Prereqs: Python 3.x + Node.js 18+.
+
 ## Quick start (Windows)
 
 ```powershell
