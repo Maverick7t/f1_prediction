@@ -14,7 +14,7 @@ Prereqs: Python 3.x + Node.js 18+.
 Backend: http://localhost:5000
 Frontend: http://localhost:5173 (Vite)
 
-## Manual run
+## Manual run (dev)
 
 ### Backend
 
