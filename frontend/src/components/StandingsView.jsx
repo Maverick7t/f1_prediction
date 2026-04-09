@@ -97,6 +97,7 @@ export default function StandingsView() {
                         {driverStandings.map((driver, idx) => (
                             <div
                                 key={driver.position}
+                                className="ui-row-hover"
                                 style={{
                                     display: 'grid',
                                     gridTemplateColumns: '40px 1fr 100px 100px',
@@ -105,12 +106,6 @@ export default function StandingsView() {
                                     backgroundColor: idx % 2 === 0 ? 'rgba(80, 80, 80, 0.15)' : 'transparent',
                                     borderBottom: idx < driverStandings.length - 1 ? '1px solid #3a3a3a' : 'none',
                                     alignItems: 'center'
-                                }}
-                                onMouseEnter={(e) => {
-                                    e.currentTarget.style.backgroundColor = 'rgba(0, 212, 255, 0.2)'
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.currentTarget.style.backgroundColor = idx % 2 === 0 ? 'rgba(80, 80, 80, 0.15)' : 'transparent'
                                 }}
                             >
                                 <div style={{
