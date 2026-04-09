@@ -208,7 +208,7 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
                                     className="ui-row-hover"
                                     style={{
                                         borderBottom: '1px solid rgba(80, 80, 80, 0.3)',
-                                        cursor: 'pointer'
+                                        cursor: 'default'
                                     }}
                                 >
                                     <td style={{
