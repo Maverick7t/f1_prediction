@@ -191,12 +191,38 @@ body {
   color: var(--color-text-secondary);
 }
 
+.ui-chip {
+  padding: 6px 12px;
+  background-color: rgba(80, 80, 80, 0.2);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.ui-chip:hover {
+  border-color: var(--chip-color, var(--color-accent));
+  color: var(--chip-color, var(--color-accent));
+}
+
+.ui-chip[aria-pressed="true"] {
+  border-color: var(--chip-color, var(--color-accent));
+  color: var(--chip-color, var(--color-accent));
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ui-animate-pulse {
     animation: none;
   }
 
   .ui-tab {
+    transition: none;
+  }
+
+  .ui-chip {
     transition: none;
   }
 }
