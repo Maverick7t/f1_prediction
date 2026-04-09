@@ -3,7 +3,6 @@ import React, { useState, useEffect } from 'react'
 export default function RaceHistoryCard({ raceHistory = [] }) {
     const [races, setRaces] = useState([])
     const [sortBy, setSortBy] = useState('date')
-    const [hoveredRow, setHoveredRow] = useState(null)
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
@@ -77,78 +76,36 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
             }}>
                 <button
                     onClick={() => setSortBy('date')}
+                    type="button"
+                    className="ui-chip ui-focus-ring"
+                    aria-pressed={sortBy === 'date'}
                     style={{
-                        padding: '6px 12px',
-                        backgroundColor: sortBy === 'date' ? 'rgba(0, 212, 255, 0.2)' : 'rgba(80, 80, 80, 0.2)',
-                        border: `1px solid ${sortBy === 'date' ? '#00d4ff' : '#3a3a3a'}`,
-                        borderRadius: '4px',
-                        color: sortBy === 'date' ? '#00d4ff' : '#888888',
-                        fontSize: '11px',
-                        fontWeight: '600',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => {
-                        e.target.style.borderColor = '#00d4ff'
-                        e.target.style.color = '#00d4ff'
-                    }}
-                    onMouseLeave={(e) => {
-                        if (sortBy !== 'date') {
-                            e.target.style.borderColor = '#3a3a3a'
-                            e.target.style.color = '#888888'
-                        }
+                        '--chip-color': '#00d4ff',
+                        backgroundColor: sortBy === 'date' ? 'rgba(0, 212, 255, 0.2)' : undefined
                     }}
                 >
                     By Date
                 </button>
                 <button
                     onClick={() => setSortBy('result')}
+                    type="button"
+                    className="ui-chip ui-focus-ring"
+                    aria-pressed={sortBy === 'result'}
                     style={{
-                        padding: '6px 12px',
-                        backgroundColor: sortBy === 'result' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(80, 80, 80, 0.2)',
-                        border: `1px solid ${sortBy === 'result' ? '#22c55e' : '#3a3a3a'}`,
-                        borderRadius: '4px',
-                        color: sortBy === 'result' ? '#22c55e' : '#888888',
-                        fontSize: '11px',
-                        fontWeight: '600',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => {
-                        e.target.style.borderColor = '#22c55e'
-                        e.target.style.color = '#22c55e'
-                    }}
-                    onMouseLeave={(e) => {
-                        if (sortBy !== 'result') {
-                            e.target.style.borderColor = '#3a3a3a'
-                            e.target.style.color = '#888888'
-                        }
+                        '--chip-color': '#22c55e',
+                        backgroundColor: sortBy === 'result' ? 'rgba(34, 197, 94, 0.2)' : undefined
                     }}
                 >
                     By Result
                 </button>
                 <button
                     onClick={() => setSortBy('accuracy')}
+                    type="button"
+                    className="ui-chip ui-focus-ring"
+                    aria-pressed={sortBy === 'accuracy'}
                     style={{
-                        padding: '6px 12px',
-                        backgroundColor: sortBy === 'accuracy' ? 'rgba(234, 88, 12, 0.2)' : 'rgba(80, 80, 80, 0.2)',
-                        border: `1px solid ${sortBy === 'accuracy' ? '#ea580c' : '#3a3a3a'}`,
-                        borderRadius: '4px',
-                        color: sortBy === 'accuracy' ? '#ea580c' : '#888888',
-                        fontSize: '11px',
-                        fontWeight: '600',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => {
-                        e.target.style.borderColor = '#ea580c'
-                        e.target.style.color = '#ea580c'
-                    }}
-                    onMouseLeave={(e) => {
-                        if (sortBy !== 'accuracy') {
-                            e.target.style.borderColor = '#3a3a3a'
-                            e.target.style.color = '#888888'
-                        }
+                        '--chip-color': '#ea580c',
+                        backgroundColor: sortBy === 'accuracy' ? 'rgba(234, 88, 12, 0.2)' : undefined
                     }}
                 >
                     By Confidence
@@ -188,7 +145,7 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
                                 borderBottom: '1px solid #3a3a3a',
                                 backgroundColor: 'rgba(80, 80, 80, 0.1)'
                             }}>
-                                <th style={{
+                                <th scope="col" style={{
                                     padding: '10px 8px',
                                     textAlign: 'left',
                                     color: '#888888',
@@ -197,7 +154,7 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
                                 }}>
                                     RACE
                                 </th>
-                                <th style={{
+                                <th scope="col" style={{
                                     padding: '10px 8px',
                                     textAlign: 'center',
                                     color: '#888888',
@@ -206,7 +163,7 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
                                 }}>
                                     DATE
                                 </th>
-                                <th style={{
+                                <th scope="col" style={{
                                     padding: '10px 8px',
                                     textAlign: 'center',
                                     color: '#888888',
@@ -215,7 +172,7 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
                                 }}>
                                     PREDICTED
                                 </th>
-                                <th style={{
+                                <th scope="col" style={{
                                     padding: '10px 8px',
                                     textAlign: 'center',
                                     color: '#888888',
@@ -224,7 +181,7 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
                                 }}>
                                     ACTUAL
                                 </th>
-                                <th style={{
+                                <th scope="col" style={{
                                     padding: '10px 8px',
                                     textAlign: 'center',
                                     color: '#888888',
@@ -233,7 +190,7 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
                                 }}>
                                     RESULT
                                 </th>
-                                <th style={{
+                                <th scope="col" style={{
                                     padding: '10px 8px',
                                     textAlign: 'center',
                                     color: '#888888',
@@ -248,14 +205,11 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
                             {races.map((race, idx) => (
                                 <tr
                                     key={idx}
+                                    className="ui-row-hover"
                                     style={{
                                         borderBottom: '1px solid rgba(80, 80, 80, 0.3)',
-                                        backgroundColor: hoveredRow === idx ? 'rgba(0, 212, 255, 0.08)' : 'transparent',
-                                        transition: 'background-color 0.2s ease',
                                         cursor: 'pointer'
                                     }}
-                                    onMouseEnter={() => setHoveredRow(idx)}
-                                    onMouseLeave={() => setHoveredRow(null)}
                                 >
                                     <td style={{
                                         padding: '10px 8px',
