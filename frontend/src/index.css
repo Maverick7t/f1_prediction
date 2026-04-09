@@ -98,14 +98,14 @@ body {
 
 .driver-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: clamp(var(--space-2), 1.5vw, var(--space-3));
 }
 
 .stats-grid-4 {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: clamp(var(--space-3), 1.5vw, var(--space-4));
 }
 
 /* ── Responsive Breakpoints ────────────────────────────────── */
@@ -123,11 +123,8 @@ body {
   .dashboard-root {
     padding: var(--space-4);
   }
-  .driver-grid {
-    grid-template-columns: 1fr;
-  }
   .stats-grid-4 {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
