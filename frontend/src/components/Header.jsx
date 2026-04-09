@@ -92,6 +92,7 @@ export default function Header({ activeTab, setActiveTab }) {
                             id={`tab-${tab.id}`}
                             role="tab"
                             aria-selected={activeTab === tab.id}
+                            aria-controls={`panel-${tab.id}`}
                             tabIndex={activeTab === tab.id ? 0 : -1}
                             onKeyDown={(e) => handleTabKeyDown(e, tab.id)}
                             type="button"
