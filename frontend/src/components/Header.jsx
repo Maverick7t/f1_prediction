@@ -80,6 +80,7 @@ export default function Header({ activeTab, setActiveTab }) {
                 <nav
                     role="tablist"
                     aria-label="Dashboard views"
+                    aria-orientation="horizontal"
                     style={{
                     display: 'flex',
                     gap: '8px',
