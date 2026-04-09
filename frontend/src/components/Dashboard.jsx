@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import Header from './Header'
 import DriverCard from './DriverCard'
 import RaceInfoCard from './RaceInfoCard'
@@ -34,6 +34,15 @@ export default function Dashboard() {
   const [error, setError] = useState(null)
   const [nextRace, setNextRace] = useState(null)
   const [openF1Drivers, setOpenF1Drivers] = useState([])
+
+  const openF1DriverByAcronym = useMemo(() => {
+    const map = new Map()
+    for (const driver of openF1Drivers || []) {
+      const acronym = (driver?.nameAcronym || '').toUpperCase()
+      if (acronym) map.set(acronym, driver)
+    }
+    return map
+  }, [openF1Drivers])
 
   const [constructorStandings, setConstructorStandings] = useState([])
   const [raceHistory, setRaceHistory] = useState([])
@@ -411,8 +420,8 @@ export default function Dashboard() {
                 percentage={winnerPrediction?.percentage || 72}
                 driverName={winnerPrediction?.driver || 'NOR'}
                 teamColor="#ea580c"
-                headshotUrl={openF1Drivers.find(d => d.nameAcronym === winnerPrediction?.driver)?.headshotUrl}
-                fullName={openF1Drivers.find(d => d.nameAcronym === winnerPrediction?.driver)?.fullName}
+                headshotUrl={openF1DriverByAcronym.get((winnerPrediction?.driver || '').toUpperCase())?.headshotUrl}
+                fullName={openF1DriverByAcronym.get((winnerPrediction?.driver || '').toUpperCase())?.fullName}
                 confidence={winnerPrediction?.confidence || 'HIGH'}
                 confidenceColor={winnerPrediction?.confidence_color || '#f59e0b'}
               />
@@ -428,12 +437,7 @@ export default function Dashboard() {
               {/* Driver Predictions Grid - 2x3 */}
               <div className="driver-grid">
                 {driverData.map((driver, idx) => {
-                  // Find matching driver from OpenF1
-                  const openF1Driver = openF1Drivers.find(d => {
-                    const openAcronym = (d?.nameAcronym || '').toUpperCase();
-                    const predictedAcronym = (driver?.name || '').toUpperCase();
-                    return openAcronym && predictedAcronym && openAcronym === predictedAcronym;
-                  });
+                  const openF1Driver = openF1DriverByAcronym.get((driver?.name || '').toUpperCase())
 
                   return (
                     <DriverCard
