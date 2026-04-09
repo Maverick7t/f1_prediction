@@ -305,7 +305,13 @@ export default function Dashboard() {
       {!loading && activeTab === 'current' && (
         isOffSeason && seasonReview ? (
           /* OFF-SEASON: Show Season Review */
-          <div className="dashboard-wide" style={{
+          <div
+            className="dashboard-wide"
+            role="tabpanel"
+            id="panel-current"
+            aria-labelledby="tab-current"
+            tabIndex={0}
+            style={{
             display: 'flex',
             flexDirection: 'column',
             gap: '24px'
@@ -358,7 +364,12 @@ export default function Dashboard() {
             />
           </div>
         ) : driverData.length === 0 && error && !seasonReview ? (
-          <div style={{
+          <div
+            role="tabpanel"
+            id="panel-current"
+            aria-labelledby="tab-current"
+            tabIndex={0}
+            style={{
             backgroundColor: 'rgba(239, 68, 68, 0.1)',
             border: '1px solid rgba(239, 68, 68, 0.3)',
             borderRadius: '10px',
@@ -401,7 +412,13 @@ export default function Dashboard() {
             </div>
           </div>
         ) : (
-          <div className="dashboard-grid-main">
+          <div
+            className="dashboard-grid-main"
+            role="tabpanel"
+            id="panel-current"
+            aria-labelledby="tab-current"
+            tabIndex={0}
+          >
             {/* Left Column */}
             <div style={{
               display: 'flex',
