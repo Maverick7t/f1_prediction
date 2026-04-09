@@ -259,7 +259,7 @@ export default function Dashboard() {
   const nextRaceDateStart = coerceValidDate(nextRace?.dateStart)
 
   return (
-    <div className="dashboard-root" style={{
+    <div className="dashboard-root" aria-busy={loading} style={{
       backgroundColor: '#1a1a1a',
       minHeight: '100vh',
       fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
