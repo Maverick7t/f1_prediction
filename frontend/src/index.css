@@ -168,8 +168,35 @@ body {
   animation: pulse 2s infinite;
 }
 
+.ui-tab {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-bottom: 2px solid transparent;
+  transition: color 0.2s ease, border-color 0.2s ease;
+  white-space: nowrap;
+}
+
+.ui-tab[aria-selected="true"] {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+}
+
+.ui-tab:not([aria-selected="true"]):hover {
+  color: var(--color-text-secondary);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ui-animate-pulse {
     animation: none;
+  }
+
+  .ui-tab {
+    transition: none;
   }
 }
