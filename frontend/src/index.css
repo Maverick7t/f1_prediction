@@ -213,6 +213,14 @@ body {
   color: var(--chip-color, var(--color-accent));
 }
 
+.ui-row-hover {
+  transition: background-color 0.2s ease;
+}
+
+.ui-row-hover:hover {
+  background-color: rgba(0, 212, 255, 0.2);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ui-animate-pulse {
     animation: none;
@@ -223,6 +231,10 @@ body {
   }
 
   .ui-chip {
+    transition: none;
+  }
+
+  .ui-row-hover {
     transition: none;
   }
 }
