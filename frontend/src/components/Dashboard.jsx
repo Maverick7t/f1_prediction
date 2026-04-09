@@ -483,14 +483,26 @@ export default function Dashboard() {
 
       {/* Driver Standings Tab */}
       {!loading && activeTab === 'standings' && (
-        <div className="dashboard-single">
+        <div
+          className="dashboard-single"
+          role="tabpanel"
+          id="panel-standings"
+          aria-labelledby="tab-standings"
+          tabIndex={0}
+        >
           <StandingsView />
         </div>
       )}
 
       {/* Constructor Standings Tab */}
       {!loading && activeTab === 'constructor' && (
-        <div className="dashboard-single">
+        <div
+          className="dashboard-single"
+          role="tabpanel"
+          id="panel-constructor"
+          aria-labelledby="tab-constructor"
+          tabIndex={0}
+        >
           <ConstructorStandingsView />
         </div>
       )}
