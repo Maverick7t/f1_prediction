@@ -80,7 +80,7 @@ export default function WinnerPredictionCard({
                     alignItems: 'flex-start'
                 }}>
                     <div style={{
-                        fontSize: '48px',
+                        fontSize: 'clamp(36px, 5vw, 48px)',
                         fontWeight: '800',
                         color: '#ffffff',
                         lineHeight: '1',
@@ -109,14 +109,20 @@ export default function WinnerPredictionCard({
                 <div style={{
                     display: 'flex',
                     flexDirection: 'column',
-                    alignItems: 'flex-end'
+                    alignItems: 'flex-end',
+                    maxWidth: '60%',
+                    minWidth: 0
                 }}>
                     <div style={{
-                        fontSize: displayName.includes(' ') ? '48px' : '36px',
+                        fontSize: displayName.includes(' ') ? 'clamp(28px, 4vw, 48px)' : 'clamp(24px, 3vw, 36px)',
                         fontWeight: '800',
                         color: '#ffffff',
                         lineHeight: '1',
-                        marginBottom: '0px'
+                        marginBottom: '0px',
+                        maxWidth: '100%',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
                     }}>
                         {displayName.includes(' ') ? displayName.split(' ')[0] : displayName}
                     </div>
@@ -125,7 +131,11 @@ export default function WinnerPredictionCard({
                             fontSize: '12px',
                             fontWeight: '700',
                             color: '#ffffff',
-                            letterSpacing: '1px'
+                            letterSpacing: '1px',
+                            maxWidth: '100%',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
                         }}>
                             {displayName.split(' ')[1]}
                         </div>
