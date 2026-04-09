@@ -10,6 +10,31 @@ export default function Header({ activeTab, setActiveTab }) {
         { id: 'mlops', label: 'MODEL MONITOR' }
     ]
 
+    const tabButtonRefs = React.useRef(new Map())
+
+    const focusTab = React.useCallback((tabId) => {
+        const el = tabButtonRefs.current.get(tabId)
+        if (el) el.focus()
+    }, [])
+
+    const handleTabKeyDown = React.useCallback((e, tabId) => {
+        const currentIndex = tabs.findIndex(t => t.id === tabId)
+        if (currentIndex < 0) return
+
+        let nextIndex = null
+        if (e.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabs.length
+        if (e.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + tabs.length) % tabs.length
+        if (e.key === 'Home') nextIndex = 0
+        if (e.key === 'End') nextIndex = tabs.length - 1
+
+        if (nextIndex === null) return
+        e.preventDefault()
+
+        const nextId = tabs[nextIndex].id
+        setActiveTab(nextId)
+        requestAnimationFrame(() => focusTab(nextId))
+    }, [focusTab, setActiveTab, tabs])
+
     return (
         <header style={{
             display: 'flex',
@@ -52,7 +77,10 @@ export default function Header({ activeTab, setActiveTab }) {
                 </div>
 
                 {/* Navigation */}
-                <nav style={{
+                <nav
+                    role="tablist"
+                    aria-label="Dashboard views"
+                    style={{
                     display: 'flex',
                     gap: '8px',
                     flexWrap: 'wrap'
@@ -61,24 +89,15 @@ export default function Header({ activeTab, setActiveTab }) {
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
-                            style={{
-                                background: 'none',
-                                border: 'none',
-                                color: activeTab === tab.id ? '#00d4ff' : '#888888',
-                                fontSize: '13px',
-                                fontWeight: '700',
-                                letterSpacing: '0.5px',
-                                cursor: 'pointer',
-                                padding: '6px 10px',
-                                borderBottom: activeTab === tab.id ? '2px solid #00d4ff' : '2px solid transparent',
-                                transition: 'all 0.3s ease',
-                                whiteSpace: 'nowrap'
-                            }}
-                            onMouseEnter={(e) => {
-                                if (activeTab !== tab.id) e.target.style.color = '#cbd5e1'
-                            }}
-                            onMouseLeave={(e) => {
-                                if (activeTab !== tab.id) e.target.style.color = '#888888'
+                            id={`tab-${tab.id}`}
+                            role="tab"
+                            aria-selected={activeTab === tab.id}
+                            tabIndex={activeTab === tab.id ? 0 : -1}
+                            onKeyDown={(e) => handleTabKeyDown(e, tab.id)}
+                            type="button"
+                            className="ui-tab ui-focus-ring"
+                            ref={(el) => {
+                                if (el) tabButtonRefs.current.set(tab.id, el)
                             }}
                         >
                             {tab.label}
@@ -99,9 +118,8 @@ export default function Header({ activeTab, setActiveTab }) {
                     width: '8px',
                     height: '8px',
                     borderRadius: '50%',
-                    backgroundColor: '#10b981',
-                    animation: 'pulse 2s infinite'
-                }} />
+                    backgroundColor: '#10b981'
+                }} className="ui-animate-pulse" />
                 LIVE
             </div>
         </header>
