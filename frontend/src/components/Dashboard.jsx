@@ -509,7 +509,13 @@ export default function Dashboard() {
 
       {/* Circuit Map Tab */}
       {!loading && activeTab === 'circuit' && (
-        <div className="dashboard-wide" style={{
+        <div
+          className="dashboard-wide"
+          role="tabpanel"
+          id="panel-circuit"
+          aria-labelledby="tab-circuit"
+          tabIndex={0}
+          style={{
           display: 'flex',
           flexDirection: 'column',
           gap: '28px'
@@ -520,7 +526,13 @@ export default function Dashboard() {
 
       {/* Matchup Tab */}
       {!loading && activeTab === 'matchup' && (
-        <div className="dashboard-grid-matchup">
+        <div
+          className="dashboard-grid-matchup"
+          role="tabpanel"
+          id="panel-matchup"
+          aria-labelledby="tab-matchup"
+          tabIndex={0}
+        >
           <MatchupCard drivers={driverData} />
           <div style={{
             display: 'flex',
@@ -587,7 +599,13 @@ export default function Dashboard() {
 
       {/* MLOps Model Monitor Tab */}
       {!loading && activeTab === 'mlops' && (
-        <div className="dashboard-single" style={{
+        <div
+          className="dashboard-single"
+          role="tabpanel"
+          id="panel-mlops"
+          aria-labelledby="tab-mlops"
+          tabIndex={0}
+          style={{
           display: 'flex',
           flexDirection: 'column',
           gap: '28px'
