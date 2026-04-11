@@ -64,6 +64,13 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
                     textTransform: 'uppercase'
                 }}>
                     RACE HISTORY (LAST 5)
+                    <div style={{
+                        marginTop: '4px',
+                        color: '#888888',
+                        fontSize: '12px'
+                    }}>
+                        Total races: {getTotalRaces()}
+                    </div>
                 </div>
             </div>
 
