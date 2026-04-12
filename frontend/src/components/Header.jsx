@@ -1,6 +1,8 @@
 import React from 'react'
 
 export default function Header({ activeTab, setActiveTab }) {
+    const [logoFailed, setLogoFailed] = React.useState(false)
+
     const tabs = [
         { id: 'current', label: 'CURRENT RACE' },
         { id: 'standings', label: 'DRIVER STANDINGS' },
@@ -36,76 +38,55 @@ export default function Header({ activeTab, setActiveTab }) {
     }, [focusTab, setActiveTab, tabs])
 
     return (
-        <header style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '16px',
-            marginBottom: '28px',
-            borderBottom: '1px solid #3a3a3a',
-            backgroundColor: 'rgba(0, 0, 0, 0.4)',
-            padding: '16px 24px',
-            borderRadius: '8px'
-        }}>
-            <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '32px',
-                flexWrap: 'wrap'
-            }}>
-                {/* Logo */}
-                <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    cursor: 'pointer',
-                    transition: 'transform 0.3s ease'
-                }}>
-                    <div style={{
-                        fontSize: '24px',
-                        fontWeight: '800',
-                        letterSpacing: '2px',
-                        color: '#fff',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px'
-                    }}>
-                        <span>🏁</span>
-                        <span>F1 PREDICT</span>
-                    </div>
-                </div>
+        <header className="sticky top-0 z-50 mb-6">
+            <div className="mx-auto w-full max-w-[1440px] rounded-md border border-(--color-border) bg-[rgba(0,0,0,0.4)] px-4 py-3 backdrop-blur">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                    {/* Brand */}
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('current')}
+                        className="ui-focus-ring flex items-center gap-2 rounded-md px-2 py-1"
+                        aria-label="Go to current race dashboard"
+                    >
+                        <img
+                            src="/logo.png"
+                            alt="F1"
+                            className="h-6 w-auto"
+                            onError={() => setLogoFailed(true)}
+                        />
+                        <div className="text-lg font-extrabold tracking-[0.25em] text-white">
+                            PREDICT
+                        </div>
+                    </button>
 
-                {/* Navigation */}
-                <nav
-                    role="tablist"
-                    aria-label="Dashboard views"
-                    aria-orientation="horizontal"
-                    style={{
-                        display: 'flex',
-                        gap: '8px',
-                        flexWrap: 'wrap'
-                    }}>
-                    {tabs.map(tab => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id)}
-                            id={`tab-${tab.id}`}
-                            role="tab"
-                            aria-selected={activeTab === tab.id}
-                            aria-controls={`panel-${tab.id}`}
-                            tabIndex={activeTab === tab.id ? 0 : -1}
-                            onKeyDown={(e) => handleTabKeyDown(e, tab.id)}
-                            type="button"
-                            className="ui-tab ui-focus-ring"
-                            ref={(el) => {
-                                if (el) tabButtonRefs.current.set(tab.id, el)
-                            }}
-                        >
-                            {tab.label}
-                        </button>
-                    ))}
-                </nav>
+                    {/* Navigation */}
+                    <nav
+                        role="tablist"
+                        aria-label="Dashboard views"
+                        aria-orientation="horizontal"
+                        className="flex flex-wrap gap-2"
+                    >
+                        {tabs.map(tab => (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id)}
+                                id={`tab-${tab.id}`}
+                                role="tab"
+                                aria-selected={activeTab === tab.id}
+                                aria-controls={`panel-${tab.id}`}
+                                tabIndex={activeTab === tab.id ? 0 : -1}
+                                onKeyDown={(e) => handleTabKeyDown(e, tab.id)}
+                                type="button"
+                                className="ui-tab ui-focus-ring"
+                                ref={(el) => {
+                                    if (el) tabButtonRefs.current.set(tab.id, el)
+                                }}
+                            >
+                                {tab.label}
+                            </button>
+                        ))}
+                    </nav>
+                </div>
             </div>
         </header>
     )
