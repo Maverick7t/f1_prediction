@@ -8,16 +8,9 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
     useEffect(() => {
         if (raceHistory && raceHistory.length > 0) {
             // Sort races by date descending (most recent first)
-            const sorted = [...raceHistory].sort((a, b) => {
-                if (sortBy === 'date') {
-                    return new Date(b.date) - new Date(a.date)
-                } else if (sortBy === 'result') {
-                    return b.correct - a.correct
-                } else if (sortBy === 'accuracy') {
-                    return (b.confidence || 0) - (a.confidence || 0)
-                }
-                return 0
-            })
+            const sorted = [...raceHistory].sort(
+                sortStrategies[sortBy]
+            )
             setRaces(sorted)
         } else {
             setRaces([])
