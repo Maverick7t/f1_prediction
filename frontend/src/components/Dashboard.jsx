@@ -312,10 +312,10 @@ export default function Dashboard() {
             aria-labelledby="tab-current"
             tabIndex={0}
             style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '24px'
-          }}>
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '24px'
+            }}>
             {/* Off-Season Banner */}
             <div style={{
               background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(239, 68, 68, 0.05) 100%)',
@@ -370,13 +370,13 @@ export default function Dashboard() {
             aria-labelledby="tab-current"
             tabIndex={0}
             style={{
-            backgroundColor: 'rgba(239, 68, 68, 0.1)',
-            border: '1px solid rgba(239, 68, 68, 0.3)',
-            borderRadius: '10px',
-            padding: '40px',
-            textAlign: 'center',
-            maxWidth: '600px'
-          }}>
+              backgroundColor: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: '10px',
+              padding: '40px',
+              textAlign: 'center',
+              maxWidth: '600px'
+            }}>
             <div style={{
               fontSize: '18px',
               fontWeight: '700',
@@ -516,10 +516,10 @@ export default function Dashboard() {
           aria-labelledby="tab-circuit"
           tabIndex={0}
           style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '28px'
-        }}>
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '28px'
+          }}>
           <EnhancedCircuitMapCard />
         </div>
       )}
@@ -606,10 +606,10 @@ export default function Dashboard() {
           aria-labelledby="tab-mlops"
           tabIndex={0}
           style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '28px'
-        }}>
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '28px'
+          }}>
           <ModelMetricsCard />
         </div>
       )}

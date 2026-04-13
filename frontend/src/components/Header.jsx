@@ -82,10 +82,10 @@ export default function Header({ activeTab, setActiveTab }) {
                     aria-label="Dashboard views"
                     aria-orientation="horizontal"
                     style={{
-                    display: 'flex',
-                    gap: '8px',
-                    flexWrap: 'wrap'
-                }}>
+                        display: 'flex',
+                        gap: '8px',
+                        flexWrap: 'wrap'
+                    }}>
                     {tabs.map(tab => (
                         <button
                             key={tab.id}
@@ -106,23 +106,6 @@ export default function Header({ activeTab, setActiveTab }) {
                         </button>
                     ))}
                 </nav>
-            </div>
-
-            <div style={{
-                color: '#888888',
-                fontSize: '13px',
-                fontWeight: '600',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-            }}>
-                <div style={{
-                    width: '8px',
-                    height: '8px',
-                    borderRadius: '50%',
-                    backgroundColor: '#10b981'
-                }} className="ui-animate-pulse" />
-                LIVE
             </div>
         </header>
     )
