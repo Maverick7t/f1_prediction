@@ -260,10 +260,10 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
                                     <td style={{
                                         padding: '10px 8px',
                                         textAlign: 'center',
-                                        color: getConfidenceColor(race.confidence || 0),
+                                        color: typeof race.confidence === 'number' ? getConfidenceColor(race.confidence) : '#888888',
                                         fontWeight: '600'
                                     }}>
-                                        {race.confidence || 0}%
+                                        {typeof race.confidence === 'number' ? `${race.confidence}%` : '—'}
                                     </td>
                                 </tr>
                             ))}
