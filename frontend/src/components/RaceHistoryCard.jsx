@@ -202,9 +202,9 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
                             </tr>
                         </thead>
                         <tbody>
-                            {races.map((race, idx) => (
+                            {races.map((race) => (
                                 <tr
-                                    key={idx}
+                                    key={`${race.race}-${race.date}`}
                                     className="ui-row-hover"
                                     style={{
                                         borderBottom: '1px solid rgba(80, 80, 80, 0.3)',
