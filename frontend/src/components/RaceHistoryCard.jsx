@@ -113,7 +113,7 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
             </div>
 
             {/* Table */}
-            {loading ? (
+            {races.length === 0 ? (
                 <div style={{
                     textAlign: 'center',
                     padding: '40px',
