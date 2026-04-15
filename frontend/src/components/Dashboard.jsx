@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import Header from './Header'
 import DriverCard from './DriverCard'
-import RaceInfoCard from './RaceInfoCard'
 import WinnerPredictionCard from './WinnerPredictionCard'
 import RaceHistoryCard from './RaceHistoryCard'
 import SeasonReviewCard from './SeasonReviewCard'
@@ -24,6 +23,41 @@ function coerceValidDate(value) {
     return Number.isNaN(parsed.getTime()) ? null : parsed
   }
   return null
+}
+
+function formatCountdown(targetDate) {
+  if (!targetDate) return 'TBD'
+  const diffMs = targetDate.getTime() - Date.now()
+  if (!Number.isFinite(diffMs)) return 'TBD'
+  if (diffMs <= 0) return 'IN PROGRESS / COMPLETE'
+
+  const totalMinutes = Math.floor(diffMs / (60 * 1000))
+  const days = Math.floor(totalMinutes / (60 * 24))
+  const hours = Math.floor((totalMinutes - days * 60 * 24) / 60)
+  const minutes = totalMinutes - days * 60 * 24 - hours * 60
+
+  if (days > 0) return `${days}d ${hours}h`
+  if (hours > 0) return `${hours}h ${minutes}m`
+  return `${minutes}m`
+}
+
+function computeLast5ModelHealth(raceHistory) {
+  const races = Array.isArray(raceHistory) ? raceHistory : []
+  const byDateDesc = [...races].sort((a, b) => new Date(b?.date) - new Date(a?.date))
+  const last5 = byDateDesc.slice(0, 5)
+  const total = last5.length
+  const correct = last5.filter(r => Boolean(r?.correct)).length
+  const accuracy = total ? Math.round((correct / total) * 100) : null
+
+  const confidences = last5
+    .map(r => (typeof r?.confidence === 'number' ? r.confidence : null))
+    .filter(v => typeof v === 'number')
+
+  const avgConfidence = confidences.length
+    ? Math.round(confidences.reduce((sum, v) => sum + v, 0) / confidences.length)
+    : null
+
+  return { last5, total, correct, accuracy, avgConfidence }
 }
 
 export default function Dashboard() {
@@ -257,47 +291,25 @@ export default function Dashboard() {
   }, [])
 
   const nextRaceDateStart = coerceValidDate(nextRace?.dateStart)
+  const modelHealth = useMemo(() => computeLast5ModelHealth(raceHistory), [raceHistory])
 
   return (
-    <div className="dashboard-root" aria-busy={loading} style={{
-      backgroundColor: '#1a1a1a',
-      minHeight: '100vh',
-      fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
-      color: '#e2e8f0'
-    }}>
+    <div className="dashboard-root" aria-busy={loading}>
       {/* Header Component */}
       <Header activeTab={activeTab} setActiveTab={setActiveTab} />
 
       {/* Loading State */}
       {loading && (
-        <div style={{
-          textAlign: 'center',
-          padding: '60px',
-          color: '#94a3b8',
-          fontSize: '14px'
-        }}>
-          <div style={{
-            fontSize: '18px',
-            fontWeight: '700',
-            marginBottom: '12px'
-          }}>Loading Predictions...</div>
-          <div style={{ fontSize: '14px' }}>Fetching data from ML model...</div>
+        <div className="dashboard-wide rounded-lg border border-(--color-border) bg-(--color-surface) p-10 text-center">
+          <div className="ui-animate-pulse text-sm text-(--color-text-muted)">Loading predictions…</div>
         </div>
       )}
 
       {/* Error State - only show if NOT in off-season mode */}
       {error && !loading && !isOffSeason && (
-        <div style={{
-          backgroundColor: 'rgba(239, 68, 68, 0.1)',
-          border: '1px solid rgba(239, 68, 68, 0.3)',
-          borderRadius: '10px',
-          padding: '20px',
-          margin: '20px 0',
-          color: '#fca5a5',
-          fontSize: '14px'
-        }}>
-          <div style={{ fontWeight: '700', marginBottom: '8px' }}>⚠️ {error}</div>
-          <div style={{ fontSize: '13px', opacity: 0.8 }}>Showing fallback data. Make sure the API server is running on {API_BASE_URL}</div>
+        <div className="dashboard-wide rounded-lg border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.1)] p-4 text-sm text-red-200">
+          <div className="font-extrabold">⚠️ {error}</div>
+          <div className="mt-1 text-[rgba(226,232,240,0.8)]">Showing fallback data. Make sure the API server is running on {API_BASE_URL}</div>
         </div>
       )}
 
@@ -413,69 +425,203 @@ export default function Dashboard() {
           </div>
         ) : (
           <div
-            className="dashboard-grid-main"
+            className="dashboard-wide"
             role="tabpanel"
             id="panel-current"
             aria-labelledby="tab-current"
             tabIndex={0}
           >
-            {/* Left Column */}
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '20px'
-            }}>
-              <RaceInfoCard
-                raceName={nextRace?.error ? 'Next race unavailable' : (nextRace?.raceName || 'TBD')}
-                dates={nextRaceDateStart ? nextRaceDateStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase() : 'TBD'}
-                time={nextRaceDateStart ? nextRaceDateStart.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }) : 'TBD'}
-                track={nextRace?.error ? 'TBD' : (nextRace?.circuitName || 'TBD')}
-                country={nextRace?.error ? undefined : nextRace?.country}
-                circuitImage={nextRace?.error ? null : nextRace?.circuitImage}
-              />
-              <WinnerPredictionCard
-                percentage={winnerPrediction?.percentage || 72}
-                driverName={winnerPrediction?.driver || 'NOR'}
-                teamColor="#ea580c"
-                headshotUrl={openF1DriverByAcronym.get((winnerPrediction?.driver || '').toUpperCase())?.headshotUrl}
-                fullName={openF1DriverByAcronym.get((winnerPrediction?.driver || '').toUpperCase())?.fullName}
-                confidence={winnerPrediction?.confidence || 'HIGH'}
-                confidenceColor={winnerPrediction?.confidence_color || '#f59e0b'}
-              />
+            {/* Hero: race context */}
+            <section
+              className="relative overflow-hidden rounded-lg border border-(--color-border) bg-(--color-surface)"
+              style={{ backgroundImage: `url(/banner.jpg)`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+            >
+              <div className="absolute inset-0 bg-[rgba(0,0,0,0.55)]" />
+              <div className="relative p-5 sm:p-6">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-extrabold tracking-wider text-(--color-text-muted)">NEXT RACE</div>
+                    <div className="mt-1 truncate text-2xl font-extrabold text-white">
+                      {nextRace?.error ? 'Next race unavailable' : (nextRace?.raceName || 'TBD')}
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[rgba(226,232,240,0.85)]">
+                      <span className="font-semibold">{nextRace?.error ? 'TBD' : (nextRace?.circuitName || 'TBD')}</span>
+                      {nextRace?.error ? null : (
+                        <span className="text-[rgba(148,163,184,0.95)]">{nextRace?.country || ''}</span>
+                      )}
+                    </div>
+                  </div>
 
-            </div>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    <div className="rounded-md border border-[rgba(255,255,255,0.08)] bg-[rgba(0,0,0,0.25)] px-3 py-2">
+                      <div className="text-[11px] font-bold tracking-wider text-(--color-text-muted)">RACE DAY</div>
+                      <div className="mt-1 text-sm font-extrabold text-white">
+                        {nextRaceDateStart ? nextRaceDateStart.toLocaleDateString('en-US', { month: 'short', day: '2-digit' }) : 'TBD'}
+                      </div>
+                    </div>
+                    <div className="rounded-md border border-[rgba(255,255,255,0.08)] bg-[rgba(0,0,0,0.25)] px-3 py-2">
+                      <div className="text-[11px] font-bold tracking-wider text-(--color-text-muted)">LOCAL TIME</div>
+                      <div className="mt-1 text-sm font-extrabold text-white">
+                        {nextRaceDateStart ? nextRaceDateStart.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }) : 'TBD'}
+                      </div>
+                    </div>
+                    <div className="rounded-md border border-[rgba(255,255,255,0.08)] bg-[rgba(0,0,0,0.25)] px-3 py-2">
+                      <div className="text-[11px] font-bold tracking-wider text-(--color-text-muted)">COUNTDOWN</div>
+                      <div className="mt-1 text-sm font-extrabold text-white">{formatCountdown(nextRaceDateStart)}</div>
+                    </div>
+                  </div>
+                </div>
 
-            {/* Right Column */}
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '20px'
-            }}>
-              {/* Driver Predictions Grid - 2x3 */}
-              <div className="driver-grid">
-                {driverData.map((driver, idx) => {
-                  const openF1Driver = openF1DriverByAcronym.get((driver?.name || '').toUpperCase())
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="rounded-md border border-[rgba(255,255,255,0.08)] bg-[rgba(0,0,0,0.25)] p-3">
+                    <div className="text-[11px] font-extrabold tracking-wider text-(--color-text-muted)">WINNER CONFIDENCE</div>
+                    <div className="mt-1 text-sm font-bold text-white">
+                      {winnerPrediction?.driver || '—'} · {typeof winnerPrediction?.percentage === 'number' ? `${winnerPrediction.percentage}%` : '—'}
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-[rgba(255,255,255,0.08)] bg-[rgba(0,0,0,0.25)] p-3">
+                    <div className="text-[11px] font-extrabold tracking-wider text-(--color-text-muted)">LAST 5 ACCURACY</div>
+                    <div className="mt-1 text-sm font-bold text-white">
+                      {typeof modelHealth.accuracy === 'number' ? `${modelHealth.accuracy}%` : '—'}
+                      {modelHealth.total ? (
+                        <span className="ml-2 text-xs font-semibold text-[rgba(148,163,184,0.95)]">({modelHealth.correct}/{modelHealth.total})</span>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-[rgba(255,255,255,0.08)] bg-[rgba(0,0,0,0.25)] p-3">
+                    <div className="text-[11px] font-extrabold tracking-wider text-(--color-text-muted)">AVG CONFIDENCE (LAST 5)</div>
+                    <div className="mt-1 text-sm font-bold text-white">
+                      {typeof modelHealth.avgConfidence === 'number' ? `${modelHealth.avgConfidence}%` : '—'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
 
-                  return (
-                    <DriverCard
-                      key={`${driver?.name || 'driver'}-${driver?.team || 'team'}-${driver?.position || idx}`}
-                      name={driver.name}
-                      team={driver.team}
-                      percentage={driver.percentage}
-                      teamColor={openF1Driver?.teamColour || driver.teamColor}
-                      position={driver.position}
-                      points={driver.points}
-                      headshotUrl={openF1Driver?.headshotUrl}
-                      fullName={openF1Driver?.fullName}
-                      confidence={driver.confidence || 'MEDIUM'}
-                      confidenceColor={driver.confidenceColor || '#f59e0b'}
-                    />
-                  );
-                })}
+            {/* Main layout: left content + right rail */}
+            <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+              <div className="flex flex-col gap-6">
+                <WinnerPredictionCard
+                  percentage={winnerPrediction?.percentage || 72}
+                  driverName={winnerPrediction?.driver || 'NOR'}
+                  teamColor="#ea580c"
+                  headshotUrl={openF1DriverByAcronym.get((winnerPrediction?.driver || '').toUpperCase())?.headshotUrl}
+                  fullName={openF1DriverByAcronym.get((winnerPrediction?.driver || '').toUpperCase())?.fullName}
+                  confidence={winnerPrediction?.confidence || 'HIGH'}
+                  confidenceColor={winnerPrediction?.confidence_color || '#f59e0b'}
+                />
+
+                <section className="rounded-lg border border-(--color-border) bg-(--color-surface) p-4">
+                  <div className="text-xs font-extrabold tracking-wider text-(--color-text-muted)">RANKINGS</div>
+                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {driverData.slice(1, 5).map((driver, idx) => {
+                      const openF1Driver = openF1DriverByAcronym.get((driver?.name || '').toUpperCase())
+                      return (
+                        <DriverCard
+                          key={`${driver?.name || 'driver'}-${driver?.team || 'team'}-${driver?.position || idx}`}
+                          name={driver.name}
+                          team={driver.team}
+                          percentage={driver.percentage}
+                          teamColor={openF1Driver?.teamColour || driver.teamColor}
+                          position={driver.position}
+                          points={driver.points}
+                          headshotUrl={openF1Driver?.headshotUrl}
+                          fullName={openF1Driver?.fullName}
+                          confidence={driver.confidence || 'MEDIUM'}
+                          confidenceColor={driver.confidenceColor || '#f59e0b'}
+                        />
+                      )
+                    })}
+                  </div>
+
+                  {driverData.length > 5 && (
+                    <div className="mt-4 rounded-md border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)] p-3">
+                      <div className="text-[11px] font-extrabold tracking-wider text-(--color-text-muted)">MORE DRIVERS</div>
+                      <div className="mt-2 grid grid-cols-1 gap-2">
+                        {driverData.slice(5, 10).map((driver, idx) => (
+                          <div
+                            key={`${driver?.name || 'driver'}-${driver?.position || idx}-row`}
+                            className="flex items-center justify-between rounded-sm border border-[rgba(255,255,255,0.06)] bg-[rgba(0,0,0,0.2)] px-3 py-2"
+                          >
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-semibold text-(--color-text-primary)">P{driver.position} · {driver.name}</div>
+                              <div className="truncate text-xs text-(--color-text-muted)">{driver.team}</div>
+                            </div>
+                            <div className="ml-3 text-sm font-extrabold text-(--color-accent)">{driver.percentage}%</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </section>
+
+                {/* Past 5 predictions table */}
+                <RaceHistoryCard raceHistory={modelHealth.last5} />
               </div>
 
-              {/* Race History Table */}
-              <RaceHistoryCard raceHistory={raceHistory} />
+              <div className="flex flex-col gap-6">
+                <section className="rounded-lg border border-(--color-border) bg-(--color-surface) p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="text-xs font-extrabold tracking-wider text-(--color-text-muted)">CIRCUIT INTELLIGENCE</div>
+                    <button
+                      type="button"
+                      className="ui-focus-ring rounded-md border border-[rgba(255,255,255,0.12)] px-2 py-1 text-xs font-bold text-(--color-text-primary)"
+                      onClick={() => setActiveTab('circuit')}
+                    >
+                      Open Map
+                    </button>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <div className="text-[11px] font-extrabold tracking-wider text-(--color-text-muted)">TRACK</div>
+                      <div className="mt-1 font-semibold text-(--color-text-primary)">{nextRace?.error ? 'TBD' : (nextRace?.circuitName || 'TBD')}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-extrabold tracking-wider text-(--color-text-muted)">COUNTRY</div>
+                      <div className="mt-1 font-semibold text-(--color-text-primary)">{nextRace?.error ? '—' : (nextRace?.country || '—')}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-extrabold tracking-wider text-(--color-text-muted)">RACE WINDOW</div>
+                      <div className="mt-1 font-semibold text-(--color-text-primary)">
+                        {nextRaceDateStart ? nextRaceDateStart.toLocaleDateString('en-US', { month: 'short', day: '2-digit' }) : 'TBD'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-extrabold tracking-wider text-(--color-text-muted)">COUNTDOWN</div>
+                      <div className="mt-1 font-semibold text-(--color-text-primary)">{formatCountdown(nextRaceDateStart)}</div>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="rounded-lg border border-(--color-border) bg-(--color-surface) p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="text-xs font-extrabold tracking-wider text-(--color-text-muted)">MODEL HEALTH</div>
+                    <button
+                      type="button"
+                      className="ui-focus-ring rounded-md border border-[rgba(255,255,255,0.12)] px-2 py-1 text-xs font-bold text-(--color-text-primary)"
+                      onClick={() => setActiveTab('mlops')}
+                    >
+                      Model Monitor
+                    </button>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <div className="text-[11px] font-extrabold tracking-wider text-(--color-text-muted)">LAST 5 ACCURACY</div>
+                      <div className="mt-1 font-semibold text-(--color-text-primary)">{typeof modelHealth.accuracy === 'number' ? `${modelHealth.accuracy}%` : '—'}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-extrabold tracking-wider text-(--color-text-muted)">AVG CONFIDENCE</div>
+                      <div className="mt-1 font-semibold text-(--color-text-primary)">{typeof modelHealth.avgConfidence === 'number' ? `${modelHealth.avgConfidence}%` : '—'}</div>
+                    </div>
+                    <div className="col-span-2">
+                      <div className="text-[11px] font-extrabold tracking-wider text-(--color-text-muted)">SAMPLE</div>
+                      <div className="mt-1 text-sm text-(--color-text-secondary)">
+                        {modelHealth.total ? `Computed from the last ${modelHealth.total} completed races.` : 'No completed races found yet.'}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </div>
             </div>
           </div>
         )
