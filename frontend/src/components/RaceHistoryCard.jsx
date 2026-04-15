@@ -67,6 +67,14 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
                 </div>
             </div>
 
+            <div style={{
+                color: '#22c55e',
+                fontSize: '12px',
+                fontWeight: '600'
+            }}>
+                Accuracy: {calculateModelAccuracy()}%
+            </div>
+
             {/* Controls */}
             <div style={{
                 display: 'flex',
