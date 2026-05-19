@@ -15,6 +15,9 @@ export default function DriverCard({
 }) {
     const [isHovered, setIsHovered] = useState(false)
 
+    const pointsNumber = typeof points === 'number' ? points : Number(points)
+    const shouldShowPoints = Number.isFinite(pointsNumber) && pointsNumber > 0
+
     let barColor = confidenceColor
 
     return (
@@ -33,8 +36,7 @@ export default function DriverCard({
                 flexDirection: 'column',
                 gap: '8px',
                 cursor: 'pointer',
-                transition: 'all 0.3s ease',
-                transform: isHovered ? 'translateY(-4px)' : 'translateY(0)',
+                transition: 'background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease',
                 boxShadow: isHovered ? '0 8px 16px rgba(0, 212, 255, 0.2)' : 'none'
             }}>
             <div style={{
@@ -143,18 +145,6 @@ export default function DriverCard({
                 </div>
             </div>
 
-            {isHovered && (
-                <div style={{
-                    marginTop: '8px',
-                    paddingTop: '8px',
-                    borderTop: '1px solid rgba(80, 80, 80, 0.5)',
-                    fontSize: '13px',
-                    color: '#cbd5e1'
-                }}>
-                    {points && <div>Points: <span style={{ color: '#00d4ff', fontWeight: '700' }}>{points}</span></div>}
-                    {/* detailed analysis link removed as requested */}
-                </div>
-            )}
         </div>
     )
 }

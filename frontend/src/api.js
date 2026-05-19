@@ -307,7 +307,7 @@ export function transformPredictionsToDriverData(predictions) {
         percentage: pred.percentage || pred.win_prob || 0,
         teamColor: teamColors[pred.team] || '#64748b',
         position: idx + 1,
-        points: 0, // Not available from API
+        // points: 0, // Not available from API
         predictedWin: pred.p_win || pred.win_prob || 0,
         confidence: pred.confidence || 'MEDIUM',
         confidenceColor: pred.confidence_color || '#f59e0b'
