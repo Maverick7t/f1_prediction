@@ -33,6 +33,13 @@ jobs:
       - name: Install backend dependencies
         run: pip install -r backend/requirements.txt
 
+      - name: Debug Supabase URL
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: |
+          echo "URL length: ${#SUPABASE_URL}"
+          python3 -c "from urllib.parse import urlparse; import os; print(urlparse(os.environ['SUPABASE_URL']))"
+
       - name: Run post_qualifying job
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
