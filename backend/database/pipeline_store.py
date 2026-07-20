@@ -10,6 +10,7 @@ This module intentionally keeps the interface small and idempotent.
 
 from __future__ import annotations
 
+import os
 import hashlib
 import json
 from dataclasses import dataclass
@@ -224,3 +225,16 @@ def _coerce_int(v: Any) -> Optional[int]:
         return int(v)
     except Exception:
         return None
+
+
+
+url = os.getenv("SUPABASE_URL")
+
+print(
+    f"Supabase URL exists = {url is not None}"
+)
+
+if url:
+    print(
+        f"starts with https = {url.startswith('https://')}"
+    )
