@@ -71,9 +71,12 @@ def main() -> int:
     meta = RaceMeta(
         race_key=race_meta.race_key,
         race_year=year,
+        round=round_number,
         event=race_meta.race_name,
         circuit=race_meta.circuit_name,
+        circuit_id=race_meta.circuit_id,
         source="ergast",
+        date=race_meta.date,
     )
 
     print(f"Race: {meta.race_key} | {meta.event} | {meta.circuit} | Q rows={len(qualifying)}")
