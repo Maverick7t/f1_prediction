@@ -89,154 +89,160 @@ def main() -> int:
 
     store = None
     prediction_logger = None
-    if not args.dry_run:
+    db_enabled = not args.dry_run
+
+    if db_enabled:
         if not config.SUPABASE_URL or not config.SUPABASE_SERVICE_KEY:
             raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_KEY")
         store = PipelineStore(supabase_url=config.SUPABASE_URL, supabase_key=config.SUPABASE_SERVICE_KEY)
         prediction_logger = get_prediction_logger(config)
 
-    if not args.dry_run:
-        res_count = store.upsert_results_raw(meta, results)  # type: ignore[union-attr]
-        print(f"Upserted results_raw rows: {res_count}")
-
-        if winner_code:
-            ok = prediction_logger.update_actual_winner(meta.event, winner_code, race_year=meta.race_year)  # type: ignore[union-attr]
-            print(f"Updated predictions.actual_winner: {ok}")
-
-        latest = prediction_logger.get_latest_prediction(meta.event, race_year=meta.race_year)  # type: ignore[union-attr]
-        if latest:
-            print(
-                f"Latest prediction row: predicted={latest.get('predicted')} actual={latest.get('actual')} correct={latest.get('correct')} conf={latest.get('confidence')}"
-            )
-
-        # Store official standings snapshot (used by the standings endpoints).
-        standings = StandingsCache(
-            supabase_url=config.SUPABASE_URL,
-            supabase_key=config.SUPABASE_SERVICE_KEY,
-        )
-
-        ttl = timedelta(days=365)
-        driver_rows = fetch_driver_standings(year, round_number)
-        if driver_rows:
-            ok = standings.upsert(
-                season=year,
-                category="driver",
-                payload=driver_rows,
-                source="Ergast",
-                ttl=ttl,
-            )
-            if not ok:
-                raise RuntimeError("Failed to upsert driver standings into standings_cache")
-            print(f"Upserted standings_cache: driver rows={len(driver_rows)}")
-        else:
-            print("⚠ No driver standings returned; skipping standings_cache upsert")
-
-        constructor_rows = fetch_constructor_standings(year, round_number)
-        if constructor_rows:
-            ok = standings.upsert(
-                season=year,
-                category="constructor",
-                payload=constructor_rows,
-                source="Ergast",
-                ttl=ttl,
-            )
-            if not ok:
-                raise RuntimeError("Failed to upsert constructor standings into standings_cache")
-            print(f"Upserted standings_cache: constructor rows={len(constructor_rows)}")
-        else:
-            print("⚠ No constructor standings returned; skipping standings_cache upsert")
-
-        # Cache race telemetry (FastF1) for frontend use. Best-effort.
+    if db_enabled:
         try:
-            import fastf1
-            import numpy as np
-            import pandas as pd
+            res_count = store.upsert_results_raw(meta, results)  # type: ignore[union-attr]
+            print(f"Upserted results_raw rows: {res_count}")
 
-            fastf1.Cache.enable_cache(str(config.FASTF1_CACHE_DIR))
+            if winner_code:
+                ok = prediction_logger.update_actual_winner(meta.event, winner_code, race_year=meta.race_year)  # type: ignore[union-attr]
+                print(f"Updated predictions.actual_winner: {ok}")
 
-            print("Caching race telemetry (top 6) via FastF1...")
-            session = fastf1.get_session(year, round_number, "R")
-            session.load(laps=True, telemetry=True, weather=False)
-
-            results_df = session.results.sort_values("Position")
-            top6_codes = results_df.head(6)["Abbreviation"].tolist()
-
-            drivers_data = []
-            for driver_code in top6_codes:
-                try:
-                    driver_row = session.results[session.results["Abbreviation"] == driver_code].iloc[0]
-                    driver_laps = session.laps.pick_drivers([driver_code])
-                    if driver_laps.empty:
-                        continue
-                    fastest_lap = driver_laps.pick_fastest()
-                    telemetry = fastest_lap.get_telemetry()
-                    if telemetry.empty:
-                        continue
-
-                    lap_time = fastest_lap["LapTime"].total_seconds() if pd.notna(fastest_lap["LapTime"]) else 0
-
-                    s1 = fastest_lap.get("Sector1Time", np.nan)
-                    s2 = fastest_lap.get("Sector2Time", np.nan)
-                    s3 = fastest_lap.get("Sector3Time", np.nan)
-                    sector1_s = s1.total_seconds() if pd.notna(s1) else 0
-                    sector2_s = s2.total_seconds() if pd.notna(s2) else 0
-                    sector3_s = s3.total_seconds() if pd.notna(s3) else 0
-
-                    max_accel = telemetry["Acceleration"].max() if "Acceleration" in telemetry.columns else 0
-                    avg_accel = telemetry["Acceleration"].mean() if "Acceleration" in telemetry.columns else 0
-
-                    brake_events = 0
-                    if "Brake" in telemetry.columns:
-                        brake_events = (telemetry["Brake"] > 0).sum()
-
-                    circuit_trace = {
-                        "x": telemetry["X"].astype(float).tolist(),
-                        "y": telemetry["Y"].astype(float).tolist(),
-                        "speed": telemetry["Speed"].astype(float).tolist(),
-                    }
-
-                    drivers_data.append(
-                        {
-                            "code": str(driver_code),
-                            "name": str(driver_row["FullName"]),
-                            "team": str(driver_row["TeamName"]),
-                            "race_position": int(driver_row["Position"]) if pd.notna(driver_row["Position"]) else None,
-                            "telemetry_stats": {
-                                "lap_time_s": float(round(lap_time, 3)),
-                                "top_speed_kmh": float(round(telemetry["Speed"].max(), 1)),
-                                "avg_speed_kmh": float(round(telemetry["Speed"].mean(), 1)),
-                                "min_speed_kmh": float(round(telemetry["Speed"].min(), 1)),
-                                "max_acceleration_g": float(round(max_accel, 2)),
-                                "avg_acceleration_g": float(round(avg_accel, 2)),
-                                "sector1_s": float(round(sector1_s, 3)),
-                                "sector2_s": float(round(sector2_s, 3)),
-                                "sector3_s": float(round(sector3_s, 3)),
-                                "total_data_points": int(len(telemetry)),
-                                "brake_zones": int(brake_events),
-                            },
-                            "circuit_trace": circuit_trace,
-                            "available_channels": [str(c) for c in telemetry.columns.tolist()],
-                        }
-                    )
-                except Exception:
-                    continue
-
-            if drivers_data:
-                race_cache = get_race_telemetry_cache(config)
-                race_cache.cache_race_telemetry(
-                    race_key=meta.race_key,
-                    race_year=meta.race_year,
-                    race_telemetry_data=drivers_data,
-                    ttl_hours=24 * 365,
+            latest = prediction_logger.get_latest_prediction(meta.event, race_year=meta.race_year)  # type: ignore[union-attr]
+            if latest:
+                print(
+                    f"Latest prediction row: predicted={latest.get('predicted')} actual={latest.get('actual')} correct={latest.get('correct')} conf={latest.get('confidence')}"
                 )
-                print(f"Upserted race_telemetry_cache rows: {len(drivers_data)}")
+
+            # Store official standings snapshot (used by the standings endpoints).
+            standings = StandingsCache(
+                supabase_url=config.SUPABASE_URL,
+                supabase_key=config.SUPABASE_SERVICE_KEY,
+            )
+
+            ttl = timedelta(days=365)
+            driver_rows = fetch_driver_standings(year, round_number)
+            if driver_rows:
+                ok = standings.upsert(
+                    season=year,
+                    category="driver",
+                    payload=driver_rows,
+                    source="Ergast",
+                    ttl=ttl,
+                )
+                if not ok:
+                    raise RuntimeError("Failed to upsert driver standings into standings_cache")
+                print(f"Upserted standings_cache: driver rows={len(driver_rows)}")
             else:
-                print("⚠ No race telemetry extracted; skipping race_telemetry_cache")
+                print("⚠ No driver standings returned; skipping standings_cache upsert")
 
+            constructor_rows = fetch_constructor_standings(year, round_number)
+            if constructor_rows:
+                ok = standings.upsert(
+                    season=year,
+                    category="constructor",
+                    payload=constructor_rows,
+                    source="Ergast",
+                    ttl=ttl,
+                )
+                if not ok:
+                    raise RuntimeError("Failed to upsert constructor standings into standings_cache")
+                print(f"Upserted standings_cache: constructor rows={len(constructor_rows)}")
+            else:
+                print("⚠ No constructor standings returned; skipping standings_cache upsert")
+
+            # Cache race telemetry (FastF1) for frontend use. Best-effort.
+            try:
+                import fastf1
+                import numpy as np
+                import pandas as pd
+
+                fastf1.Cache.enable_cache(str(config.FASTF1_CACHE_DIR))
+
+                print("Caching race telemetry (top 6) via FastF1...")
+                session = fastf1.get_session(year, round_number, "R")
+                session.load(laps=True, telemetry=True, weather=False)
+
+                results_df = session.results.sort_values("Position")
+                top6_codes = results_df.head(6)["Abbreviation"].tolist()
+
+                drivers_data = []
+                for driver_code in top6_codes:
+                    try:
+                        driver_row = session.results[session.results["Abbreviation"] == driver_code].iloc[0]
+                        driver_laps = session.laps.pick_drivers([driver_code])
+                        if driver_laps.empty:
+                            continue
+                        fastest_lap = driver_laps.pick_fastest()
+                        telemetry = fastest_lap.get_telemetry()
+                        if telemetry.empty:
+                            continue
+
+                        lap_time = fastest_lap["LapTime"].total_seconds() if pd.notna(fastest_lap["LapTime"]) else 0
+
+                        s1 = fastest_lap.get("Sector1Time", np.nan)
+                        s2 = fastest_lap.get("Sector2Time", np.nan)
+                        s3 = fastest_lap.get("Sector3Time", np.nan)
+                        sector1_s = s1.total_seconds() if pd.notna(s1) else 0
+                        sector2_s = s2.total_seconds() if pd.notna(s2) else 0
+                        sector3_s = s3.total_seconds() if pd.notna(s3) else 0
+
+                        max_accel = telemetry["Acceleration"].max() if "Acceleration" in telemetry.columns else 0
+                        avg_accel = telemetry["Acceleration"].mean() if "Acceleration" in telemetry.columns else 0
+
+                        brake_events = 0
+                        if "Brake" in telemetry.columns:
+                            brake_events = (telemetry["Brake"] > 0).sum()
+
+                        circuit_trace = {
+                            "x": telemetry["X"].astype(float).tolist(),
+                            "y": telemetry["Y"].astype(float).tolist(),
+                            "speed": telemetry["Speed"].astype(float).tolist(),
+                        }
+
+                        drivers_data.append(
+                            {
+                                "code": str(driver_code),
+                                "name": str(driver_row["FullName"]),
+                                "team": str(driver_row["TeamName"]),
+                                "race_position": int(driver_row["Position"]) if pd.notna(driver_row["Position"]) else None,
+                                "telemetry_stats": {
+                                    "lap_time_s": float(round(lap_time, 3)),
+                                    "top_speed_kmh": float(round(telemetry["Speed"].max(), 1)),
+                                    "avg_speed_kmh": float(round(telemetry["Speed"].mean(), 1)),
+                                    "min_speed_kmh": float(round(telemetry["Speed"].min(), 1)),
+                                    "max_acceleration_g": float(round(max_accel, 2)),
+                                    "avg_acceleration_g": float(round(avg_accel, 2)),
+                                    "sector1_s": float(round(sector1_s, 3)),
+                                    "sector2_s": float(round(sector2_s, 3)),
+                                    "sector3_s": float(round(sector3_s, 3)),
+                                    "total_data_points": int(len(telemetry)),
+                                    "brake_zones": int(brake_events),
+                                },
+                                "circuit_trace": circuit_trace,
+                                "available_channels": [str(c) for c in telemetry.columns.tolist()],
+                            }
+                        )
+                    except Exception:
+                        continue
+
+                if drivers_data:
+                    race_cache = get_race_telemetry_cache(config)
+                    race_cache.cache_race_telemetry(
+                        race_key=meta.race_key,
+                        race_year=meta.race_year,
+                        race_telemetry_data=drivers_data,
+                        ttl_hours=24 * 365,
+                    )
+                    print(f"Upserted race_telemetry_cache rows: {len(drivers_data)}")
+                else:
+                    print("⚠ No race telemetry extracted; skipping race_telemetry_cache")
+
+            except Exception as e:
+                print(f"⚠ Race telemetry caching failed (non-fatal): {e}")
         except Exception as e:
-            print(f"⚠ Race telemetry caching failed (non-fatal): {e}")
+            db_enabled = False
+            print(f"⚠ Post-race persistence failed (non-fatal): {e}")
 
-    if args.retrain and not args.dry_run:
+    if args.retrain and db_enabled:
         from scripts.retrain_model import retrain_from_supabase
 
         retrain_from_supabase()
