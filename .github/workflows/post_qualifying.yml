@@ -40,6 +40,24 @@ jobs:
           echo "URL length: ${#SUPABASE_URL}"
           python3 -c "from urllib.parse import urlparse; import os; print(urlparse(os.environ['SUPABASE_URL']))"
 
+      - name: Validate Supabase URL
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from urllib.parse import urlparse
+
+          url = os.environ.get('SUPABASE_URL', '')
+          parsed = urlparse(url)
+          print(f'Parsed SUPABASE_URL host: {parsed.hostname!r}')
+
+          if not parsed.scheme or not parsed.hostname:
+              raise SystemExit('SUPABASE_URL is missing or malformed')
+          if not parsed.hostname.endswith('.supabase.co'):
+              raise SystemExit(f'SUPABASE_URL must point to a Supabase project, got {parsed.hostname!r}')
+          PY
+
       - name: Run post_qualifying job
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

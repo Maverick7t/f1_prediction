@@ -37,6 +37,24 @@ jobs:
       - name: Install backend dependencies
         run: pip install -r backend/requirements.txt
 
+      - name: Validate Supabase URL
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from urllib.parse import urlparse
+
+          url = os.environ.get('SUPABASE_URL', '')
+          parsed = urlparse(url)
+          print(f'Parsed SUPABASE_URL host: {parsed.hostname!r}')
+
+          if not parsed.scheme or not parsed.hostname:
+              raise SystemExit('SUPABASE_URL is missing or malformed')
+          if not parsed.hostname.endswith('.supabase.co'):
+              raise SystemExit(f'SUPABASE_URL must point to a Supabase project, got {parsed.hostname!r}')
+          PY
+
       - name: Run post_race job
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
