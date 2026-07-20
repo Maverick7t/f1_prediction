@@ -10,7 +10,7 @@ wheel>=0.41.0
 flask==3.0.0
 flask-cors==4.0.0
 gunicorn==21.2.0
-waitress==3.0.0
+# waitress==3.0.0
 
 # Data Processing
 pandas==2.2.3
