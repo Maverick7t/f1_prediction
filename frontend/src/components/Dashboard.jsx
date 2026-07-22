@@ -556,7 +556,7 @@ export default function Dashboard() {
                 </section>
 
                 {/* Past 5 predictions table */}
-                <RaceHistoryCard raceHistory={modelHealth.last5} />
+                <RaceHistoryCard raceHistory={modelHealth.last5} totalRaces={modelHealth.total} />
               </div>
 
               <div className="flex flex-col gap-6">

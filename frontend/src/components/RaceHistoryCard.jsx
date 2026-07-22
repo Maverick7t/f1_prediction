@@ -1,6 +1,34 @@
 import React, { useState, useEffect } from 'react'
 
-export default function RaceHistoryCard({ raceHistory = [] }) {
+const COLORS = {
+    success: '#22c55e',
+    warning: '#f59e0b',
+    error: '#ef4444'
+}
+
+const CONFIDENCE_LEVEL = {
+    HIGH: 70,
+    MEDIUM: 50
+}
+
+const sortStrategies = {
+    date: (a, b) => new Date(b?.date || 0) - new Date(a?.date || 0),
+    result: (a, b) => Number(Boolean(b?.correct)) - Number(Boolean(a?.correct)),
+    accuracy: (a, b) => (Number(b?.confidence) || 0) - (Number(a?.confidence) || 0)
+}
+
+function formatRaceDate(date) {
+    if (!date) return '—'
+    const parsed = new Date(date)
+    if (Number.isNaN(parsed.getTime())) return '—'
+    return parsed.toLocaleDateString('en-GB', {
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit'
+    })
+}
+
+export default function RaceHistoryCard({ raceHistory = [], totalRaces }) {
     const [races, setRaces] = useState([])
     const [sortBy, setSortBy] = useState('date')
     const [loading, setLoading] = useState(true)
@@ -32,6 +60,17 @@ export default function RaceHistoryCard({ raceHistory = [] }) {
         }
 
         return COLORS.error
+    }
+
+    const getTotalRaces = () => {
+        if (typeof totalRaces === 'number') return totalRaces
+        return Array.isArray(raceHistory) ? raceHistory.length : 0
+    }
+
+    const calculateModelAccuracy = () => {
+        if (!races.length) return 0
+        const correct = races.filter((race) => Boolean(race?.correct)).length
+        return Math.round((correct / races.length) * 100)
     }
 
     return (
