@@ -11,6 +11,8 @@ This module intentionally keeps the interface small and idempotent.
 from __future__ import annotations
 
 import os
+import hashlib
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional
@@ -31,12 +33,14 @@ except Exception:  # pragma: no cover
 class RaceMeta:
     race_key: str
     race_year: int
-    round: int
     event: str
     circuit: str
-    circuit_id: str
     source: str
-    date: Optional[str] = None
+
+
+def _stable_json_hash(payload: Any) -> str:
+    s = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha1(s.encode("utf-8")).hexdigest()
 
 
 class PipelineStore:
@@ -55,29 +59,25 @@ class PipelineStore:
         now = datetime.utcnow().isoformat()
 
         for r in rows:
-            driver_code = str(r.get("driver") or "").strip()
-            if not driver_code:
+            driver = str(r.get("driver") or "").strip()
+            if not driver:
                 continue
+            payload_hash = _stable_json_hash(r)
             payload_rows.append(
                 {
                     "ingested_at": now,
                     "race_key": meta.race_key,
-                    "year": int(meta.race_year),
-                    "round": int(meta.round),
-                    "race_name": meta.event,
-                    "circuit_id": meta.circuit_id,
-                    "race_date": meta.date,
+                    "race_year": int(meta.race_year),
+                    "event": meta.event,
+                    "circuit": meta.circuit,
+                    "session": "Q",
                     "source": meta.source,
-                    "driver_code": driver_code,
-                    "driver_id": r.get("driver_id") or "",
-                    "driver_name": r.get("driver_name") or driver_code,
-                    "team": r.get("team") or "Unknown",
-                    "team_id": r.get("team_id") or "",
-                    "position": int(r.get("qualifying_position")) if r.get("qualifying_position") is not None else None,
-                    "q1_time": r.get("q1_time"),
-                    "q2_time": r.get("q2_time"),
-                    "q3_time": r.get("q3_time"),
-                    "best_lap_seconds": r.get("qualifying_lap_time_s"),
+                    "driver": driver,
+                    "team": r.get("team"),
+                    "qualifying_position": r.get("qualifying_position"),
+                    "qualifying_lap_time_s": r.get("qualifying_lap_time_s"),
+                    "payload": r,
+                    "payload_hash": payload_hash,
                 }
             )
 
@@ -86,7 +86,7 @@ class PipelineStore:
 
         resp = (
             self.supabase.table("qualifying_raw")
-            .upsert(payload_rows, on_conflict="race_key,driver_code")
+            .upsert(payload_rows, on_conflict="race_key,driver")
             .execute()
         )
         return len(resp.data or payload_rows)
@@ -108,28 +108,26 @@ class PipelineStore:
         now = datetime.utcnow().isoformat()
 
         for r in rows:
-            driver_code = str(r.get("driver") or "").strip()
-            if not driver_code:
+            driver = str(r.get("driver") or "").strip()
+            if not driver:
                 continue
+            payload_hash = _stable_json_hash(r)
             payload_rows.append(
                 {
                     "ingested_at": now,
                     "race_key": meta.race_key,
-                    "year": int(meta.race_year),
-                    "round": int(meta.round),
-                    "race_name": meta.event,
-                    "circuit_id": meta.circuit_id,
-                    "race_date": meta.date,
+                    "race_year": int(meta.race_year),
+                    "event": meta.event,
+                    "circuit": meta.circuit,
+                    "session": "R",
                     "source": meta.source,
-                    "driver_code": driver_code,
-                    "driver_id": r.get("driver_id") or "",
-                    "driver_name": r.get("driver_name") or driver_code,
-                    "team": r.get("team") or "Unknown",
-                    "team_id": r.get("team_id") or "",
-                    "grid_position": r.get("grid_position") if r.get("grid_position") is not None else 0,
-                    "finish_position": int(r.get("finishing_position")) if r.get("finishing_position") is not None else None,
-                    "points": r.get("points") if r.get("points") is not None else 0.0,
-                    "status": r.get("status") or "Unknown",
+                    "driver": driver,
+                    "team": r.get("team"),
+                    "finishing_position": r.get("finishing_position"),
+                    "points": r.get("points"),
+                    "status": r.get("status"),
+                    "payload": r,
+                    "payload_hash": payload_hash,
                 }
             )
 
@@ -138,7 +136,7 @@ class PipelineStore:
 
         resp = (
             self.supabase.table("results_raw")
-            .upsert(payload_rows, on_conflict="race_key,driver_code")
+            .upsert(payload_rows, on_conflict="race_key,driver")
             .execute()
         )
         return len(resp.data or payload_rows)

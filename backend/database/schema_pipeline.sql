@@ -14,29 +14,25 @@ CREATE TABLE IF NOT EXISTS qualifying_raw (
     ingested_at TIMESTAMPTZ DEFAULT NOW(),
 
     race_key TEXT NOT NULL,
-    year INTEGER,
-    round INTEGER,
-    race_name TEXT,
-    circuit_id TEXT,
-    race_date DATE,
+    race_year INTEGER,
+    event TEXT,
+    circuit TEXT,
+    session TEXT DEFAULT 'Q',
     source TEXT,
 
-    driver_code TEXT NOT NULL,
-    driver_id TEXT,
-    driver_name TEXT,
+    driver TEXT NOT NULL,
     team TEXT,
-    team_id TEXT,
-    position INTEGER,
-    q1_time TEXT,
-    q2_time TEXT,
-    q3_time TEXT,
-    best_lap_seconds DOUBLE PRECISION,
+    qualifying_position INTEGER,
+    qualifying_lap_time_s DOUBLE PRECISION,
 
-    UNIQUE (race_key, driver_code)
+    payload JSONB,
+    payload_hash TEXT,
+
+    UNIQUE (race_key, driver)
 );
 
 CREATE INDEX IF NOT EXISTS idx_qualifying_raw_race_key ON qualifying_raw(race_key);
-CREATE INDEX IF NOT EXISTS idx_qualifying_raw_year ON qualifying_raw(year);
+CREATE INDEX IF NOT EXISTS idx_qualifying_raw_year ON qualifying_raw(race_year);
 
 -- -----------------------------------------------------------------------------
 -- results_raw: append-only-ish raw race result rows per race
@@ -46,28 +42,26 @@ CREATE TABLE IF NOT EXISTS results_raw (
     ingested_at TIMESTAMPTZ DEFAULT NOW(),
 
     race_key TEXT NOT NULL,
-    year INTEGER,
-    round INTEGER,
-    race_name TEXT,
-    circuit_id TEXT,
-    race_date DATE,
+    race_year INTEGER,
+    event TEXT,
+    circuit TEXT,
+    session TEXT DEFAULT 'R',
     source TEXT,
 
-    driver_code TEXT NOT NULL,
-    driver_id TEXT,
-    driver_name TEXT,
+    driver TEXT NOT NULL,
     team TEXT,
-    team_id TEXT,
-    grid_position INTEGER,
-    finish_position INTEGER,
+    finishing_position INTEGER,
     points DOUBLE PRECISION,
     status TEXT,
 
-    UNIQUE (race_key, driver_code)
+    payload JSONB,
+    payload_hash TEXT,
+
+    UNIQUE (race_key, driver)
 );
 
 CREATE INDEX IF NOT EXISTS idx_results_raw_race_key ON results_raw(race_key);
-CREATE INDEX IF NOT EXISTS idx_results_raw_year ON results_raw(year);
+CREATE INDEX IF NOT EXISTS idx_results_raw_year ON results_raw(race_year);
 
 -- -----------------------------------------------------------------------------
 -- features_by_race: precomputed features used at inference (reproducible)

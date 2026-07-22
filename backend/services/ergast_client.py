@@ -23,7 +23,6 @@ class ErgastRaceMeta:
     round: int
     race_name: str
     circuit_name: str
-    circuit_id: str
     date: str  # YYYY-MM-DD
 
     @property
@@ -54,7 +53,6 @@ def fetch_race_meta(year: int, round_number: int) -> ErgastRaceMeta:
     race_name = str(r.get("raceName") or "Unknown")
     circuit = r.get("Circuit") or {}
     circuit_name = str(circuit.get("circuitName") or race_name)
-    circuit_id = str(circuit.get("circuitId") or "")
     date_str = str(r.get("date") or "")[:10]
 
     return ErgastRaceMeta(
@@ -62,7 +60,6 @@ def fetch_race_meta(year: int, round_number: int) -> ErgastRaceMeta:
         round=int(round_number),
         race_name=race_name,
         circuit_name=circuit_name,
-        circuit_id=circuit_id,
         date=date_str,
     )
 
@@ -79,7 +76,6 @@ def fetch_season_calendar(year: int) -> List[ErgastRaceMeta]:
         race_name = str(r.get("raceName") or "Unknown")
         circuit = r.get("Circuit") or {}
         circuit_name = str(circuit.get("circuitName") or race_name)
-        circuit_id = str(circuit.get("circuitId") or "")
         date_str = str(r.get("date") or "")[:10]
         out.append(
             ErgastRaceMeta(
@@ -87,7 +83,6 @@ def fetch_season_calendar(year: int) -> List[ErgastRaceMeta]:
                 round=round_no,
                 race_name=race_name,
                 circuit_name=circuit_name,
-                circuit_id=circuit_id,
                 date=date_str,
             )
         )
@@ -106,13 +101,6 @@ def fetch_qualifying(year: int, round_number: int) -> List[Dict[str, Any]]:
         driver = qual.get("Driver", {}) or {}
         constructor = qual.get("Constructor", {}) or {}
         pos = qual.get("position")
-        driver_code = str(driver.get("code") or driver.get("driverId") or "").upper()
-        given = str(driver.get("givenName") or "").strip()
-        family = str(driver.get("familyName") or "").strip()
-        full_name = f"{given} {family}".strip()
-        q1_raw = qual.get("Q1")
-        q2_raw = qual.get("Q2")
-        q3_raw = qual.get("Q3")
 
         time_s = None
         for k in ("Q3", "Q2", "Q1"):
@@ -131,16 +119,10 @@ def fetch_qualifying(year: int, round_number: int) -> List[Dict[str, Any]]:
 
         qualifiers.append(
             {
-                "driver": driver_code,
-                "driver_id": str(driver.get("driverId") or ""),
-                "driver_name": full_name,
+                "driver": (driver.get("code") or driver.get("driverId") or "").upper(),
                 "team": constructor.get("name"),
-                "team_id": str(constructor.get("constructorId") or ""),
                 "qualifying_position": int(pos) if pos is not None else None,
                 "qualifying_lap_time_s": time_s,
-                "q1_time": q1_raw,
-                "q2_time": q2_raw,
-                "q3_time": q3_raw,
             }
         )
 
@@ -162,19 +144,11 @@ def fetch_results(year: int, round_number: int) -> List[Dict[str, Any]]:
 
         code = driver.get("code")
         driver_code = str(code or driver.get("driverId") or "").upper()
-        given = str(driver.get("givenName") or "").strip()
-        family = str(driver.get("familyName") or "").strip()
-        full_name = f"{given} {family}".strip()
 
         try:
             fin = int(r.get("position")) if r.get("position") is not None else None
         except Exception:
             fin = None
-
-        try:
-            grid = int(r.get("grid")) if r.get("grid") is not None else None
-        except Exception:
-            grid = None
 
         try:
             points = float(r.get("points")) if r.get("points") is not None else None
@@ -186,11 +160,7 @@ def fetch_results(year: int, round_number: int) -> List[Dict[str, Any]]:
         out.append(
             {
                 "driver": driver_code,
-                "driver_id": str(driver.get("driverId") or ""),
-                "driver_name": full_name,
                 "team": constructor.get("name"),
-                "team_id": str(constructor.get("constructorId") or ""),
-                "grid_position": grid,
                 "finishing_position": fin,
                 "points": points,
                 "status": status,

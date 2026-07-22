@@ -13,11 +13,8 @@ class PostRaceTests(unittest.TestCase):
         "fetch_race_meta",
         return_value=SimpleNamespace(
             race_key="2026_10_Belgian_Grand_Prix",
-            round=10,
             race_name="Belgian Grand Prix",
             circuit_name="Circuit de Spa-Francorchamps",
-            circuit_id="spa",
-            date="2026-07-19",
         ),
     )
     @patch.object(post_race, "ensure_directories")
